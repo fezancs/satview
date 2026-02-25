@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SatView — Satellite Boundary Viewer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg:      #0a0c0f;
+    --surface: #111318;
+    --card:    #161a21;
+    --border:  #1e2430;
+    --text:    #e8eaf0;
+    --muted:   #4a5568;
+    --c25: #bf5fff;
+    --c24: #00e5ff;
+    --c23: #a8ff3e;
+    --c22: #ff3d71;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Syne',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* ── Screens ── */
+.screen { display:none; }
+.screen.active { display:flex; flex-direction:column; min-height:100vh; }
+
+/* ── Upload ── */
+#uploadScreen.active { align-items:center; justify-content:center; padding:40px 20px; position:relative; overflow:hidden; }
+#uploadScreen::before { content:''; position:absolute; width:700px; height:700px; background:radial-gradient(circle,rgba(0,229,255,0.07) 0%,transparent 70%); top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; }
+.grid-bg { position:absolute; inset:0; background-image: linear-gradient(rgba(0,229,255,0.04) 1px,transparent 1px), linear-gradient(90deg,rgba(0,229,255,0.04) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; }
+.brand { font-size:11px; letter-spacing:0.4em; text-transform:uppercase; color:var(--c24); font-family:'Space Mono',monospace; margin-bottom:28px; position:relative; z-index:1; }
+h1.hero { font-size:clamp(30px,5vw,54px); font-weight:800; line-height:1.05; text-align:center; margin-bottom:14px; position:relative; z-index:1; }
+h1.hero span { color:var(--c24); }
+.subtitle { color:var(--muted); font-size:13px; margin-bottom:36px; font-family:'Space Mono',monospace; text-align:center; position:relative; z-index:1; }
+.source-row { display:flex; gap:14px; width:100%; max-width:640px; margin-bottom:20px; position:relative; z-index:1; }
+.source-card { flex:1; border:1.5px dashed var(--border); border-radius:14px; padding:24px 16px; text-align:center; cursor:pointer; transition:all .3s; background:var(--surface); }
+.source-card:hover { border-color:var(--c24); background:rgba(0,229,255,0.03); transform:translateY(-2px); box-shadow:0 0 30px rgba(0,229,255,0.07); }
+.source-card.db-card:hover   { border-color:var(--c25); background:rgba(191,95,255,0.03); box-shadow:0 0 30px rgba(191,95,255,0.07); }
+.source-card.both-card:hover { border-color:var(--c23); background:rgba(168,255,62,0.03); box-shadow:0 0 30px rgba(168,255,62,0.07); }
+.source-card .icon { font-size:30px; margin-bottom:10px; display:block; }
+.source-card h3 { font-size:13px; font-weight:700; margin-bottom:5px; }
+.source-card p  { font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; line-height:1.5; }
+.badge { display:inline-block; font-size:9px; font-family:'Space Mono',monospace; letter-spacing:.1em; padding:2px 8px; border-radius:3px; margin-top:8px; }
+.badge-csv  { background:rgba(0,229,255,.1);   color:var(--c24); border:1px solid rgba(0,229,255,.3); }
+.badge-db   { background:rgba(191,95,255,.1);  color:var(--c25); border:1px solid rgba(191,95,255,.3); }
+.badge-both { background:rgba(168,255,62,.1);  color:var(--c23); border:1px solid rgba(168,255,62,.3); }
+input[type="file"] { display:none; }
+.format-info { margin-top:4px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 20px; width:100%; max-width:640px; position:relative; z-index:1; }
+.format-info .tag { font-size:10px; font-family:'Space Mono',monospace; letter-spacing:.15em; text-transform:uppercase; color:var(--c24); margin-bottom:8px; display:block; }
+.format-info code { font-family:'Space Mono',monospace; font-size:11px; color:var(--c23); background:rgba(168,255,62,.06); padding:8px 12px; border-radius:6px; display:block; line-height:1.8; }
+#alertBox { margin-top:12px; font-family:'Space Mono',monospace; font-size:12px; padding:10px 16px; border-radius:8px; display:none; width:100%; max-width:640px; text-align:center; position:relative; z-index:1; }
+#alertBox.error   { display:block; background:rgba(255,61,113,.1);  border:1px solid rgba(255,61,113,.3);  color:var(--c22); }
+#alertBox.success { display:block; background:rgba(168,255,62,.08); border:1px solid rgba(168,255,62,.25); color:var(--c23); }
+#alertBox.info    { display:block; background:rgba(0,229,255,.07);  border:1px solid rgba(0,229,255,.25);  color:var(--c24); }
+
+/* ══════════════════════════════════════
+   DUPLICATE RESOLUTION SCREEN
+══════════════════════════════════════ */
+#dupeScreen.active { background:var(--bg); overflow-y:auto; }
+
+.dupe-header { padding:16px 28px; border-bottom:1px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:200; flex-wrap:wrap; gap:10px; }
+.dupe-header-left h2 { font-size:16px; font-weight:800; margin-bottom:3px; }
+.dupe-header-left p  { font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; }
+.dupe-header-right   { display:flex; gap:10px; }
+
+.dupe-summary { display:flex; gap:28px; padding:16px 28px; border-bottom:1px solid var(--border); background:rgba(255,61,113,.03); flex-wrap:wrap; align-items:center; }
+.dupe-stat { text-align:center; }
+.dupe-stat .num { font-family:'Space Mono',monospace; font-size:28px; font-weight:700; display:block; }
+.dupe-stat .lbl { font-size:9px; color:var(--muted); font-family:'Space Mono',monospace; letter-spacing:.1em; text-transform:uppercase; }
+.num-new      { color:var(--c23); }
+.num-conflict { color:var(--c22); }
+.num-resolved { color:var(--muted); }
+.num-total    { color:var(--c24); }
+
+.apply-all-bar { padding:12px 28px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.apply-all-bar span { font-family:'Space Mono',monospace; font-size:11px; color:var(--muted); }
+.aa-btn { font-family:'Space Mono',monospace; font-size:10px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer; border:1px solid; transition:all .2s; }
+.aa-db   { background:rgba(0,229,255,.1);   color:var(--c24); border-color:rgba(0,229,255,.3); }
+.aa-csv  { background:rgba(255,61,113,.1);  color:var(--c22); border-color:rgba(255,61,113,.3); }
+.aa-both { background:rgba(191,95,255,.1);  color:var(--c25); border-color:rgba(191,95,255,.3); }
+.aa-btn:hover { filter:brightness(1.3); }
+
+.conflicts-body { padding:20px 28px; flex:1; }
+
+.conflict-card { background:var(--card); border:1.5px solid var(--border); border-radius:14px; margin-bottom:20px; overflow:hidden; transition:border-color .3s, box-shadow .3s; }
+.conflict-card.resolved-db   { border-color:rgba(0,229,255,.5);   box-shadow:0 0 20px rgba(0,229,255,.06); }
+.conflict-card.resolved-csv  { border-color:rgba(255,61,113,.5);  box-shadow:0 0 20px rgba(255,61,113,.06); }
+.conflict-card.resolved-both { border-color:rgba(191,95,255,.5);  box-shadow:0 0 20px rgba(191,95,255,.06); }
+
+.conflict-top { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border-bottom:1px solid var(--border); background:rgba(255,61,113,.03); }
+.conflict-num  { font-family:'Space Mono',monospace; font-size:13px; font-weight:700; color:var(--c22); }
+.conflict-dist { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); margin-left:10px; }
+.conflict-tag  { font-size:9px; font-family:'Space Mono',monospace; letter-spacing:.1em; text-transform:uppercase; padding:2px 8px; border-radius:3px; background:rgba(255,61,113,.12); color:var(--c22); border:1px solid rgba(255,61,113,.3); }
+.conflict-resolution-label { font-family:'Space Mono',monospace; font-size:9px; margin-left:10px; }
+
+.conflict-body { display:grid; grid-template-columns:1fr 1fr; }
+.side { padding:16px 18px; }
+.side:first-child { border-right:1px solid var(--border); }
+.side-label { font-size:9px; font-family:'Space Mono',monospace; letter-spacing:.2em; text-transform:uppercase; margin-bottom:10px; }
+.side-db  .side-label { color:var(--c24); }
+.side-csv .side-label { color:var(--c22); }
+.side-name { font-size:12px; font-weight:700; margin-bottom:4px; }
+.side-meta { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-bottom:10px; }
+.mini-map  { width:100%; height:150px; border-radius:6px; border:1px solid var(--border); }
+
+.conflict-actions { display:flex; border-top:1px solid var(--border); }
+.action-btn { flex:1; padding:14px 8px; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; cursor:pointer; border:none; background:transparent; transition:all .2s; display:flex; flex-direction:column; align-items:center; gap:3px; border-right:1px solid var(--border); }
+.action-btn:last-child { border-right:none; }
+.action-btn .abicon { font-size:20px; }
+.action-btn .ablbl  { font-size:9px; letter-spacing:.1em; text-transform:uppercase; }
+.action-btn .abdesc { font-size:8px; color:var(--muted); }
+.action-db   { color:var(--c24); }
+.action-csv  { color:var(--c22); }
+.action-both { color:var(--c25); }
+.action-btn:hover { background:rgba(255,255,255,.04); }
+.action-btn.selected-db   { background:rgba(0,229,255,.12);  }
+.action-btn.selected-csv  { background:rgba(255,61,113,.12); }
+.action-btn.selected-both { background:rgba(191,95,255,.12); }
+.action-btn.selected-db .abdesc, .action-btn.selected-csv .abdesc, .action-btn.selected-both .abdesc { color:inherit; opacity:.7; }
+
+.new-rows-section { padding:20px 28px; border-top:1px solid var(--border); margin-top:4px; }
+.new-rows-section h3 { font-size:13px; font-weight:700; margin-bottom:12px; color:var(--c23); }
+.new-rows-list { display:flex; flex-direction:column; gap:6px; }
+.new-row-item { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:rgba(168,255,62,.05); border:1px solid rgba(168,255,62,.15); border-radius:8px; font-family:'Space Mono',monospace; font-size:10px; }
+.new-row-item .nri-label  { color:var(--c23); font-weight:700; }
+.new-row-item .nri-coords { color:var(--muted); font-size:9px; }
+
+/* Progress overlay */
+#progressOverlay { position:fixed; inset:0; z-index:9999; background:rgba(10,12,15,.92); display:none; flex-direction:column; align-items:center; justify-content:center; gap:18px; }
+#progressOverlay.show { display:flex; }
+.progress-spinner { width:48px; height:48px; border:3px solid var(--border); border-top-color:var(--c24); border-radius:50%; animation:spin .8s linear infinite; }
+.progress-text { font-family:'Space Mono',monospace; font-size:13px; color:var(--c24); }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* ── Gallery ── */
+.top-bar { display:flex; align-items:center; justify-content:space-between; padding:12px 22px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:300; flex-wrap:wrap; gap:8px; }
+.top-bar-left { display:flex; align-items:center; gap:14px; }
+.top-bar-brand { font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:var(--c24); font-family:'Space Mono',monospace; }
+.top-bar-count { font-family:'Space Mono',monospace; font-size:11px; color:var(--muted); }
+.top-bar-right { display:flex; gap:8px; }
+.btn { padding:7px 14px; border-radius:8px; cursor:pointer; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; transition:all .2s; border:1px solid; }
+.btn-outline { background:var(--card); border-color:var(--border); color:var(--text); }
+.btn-outline:hover { border-color:var(--c24); color:var(--c24); }
+.btn-green  { background:rgba(168,255,62,.1);  border-color:rgba(168,255,62,.35); color:var(--c23); }
+.btn-green:hover { background:rgba(168,255,62,.22); }
+.btn-purple { background:rgba(191,95,255,.1);  border-color:rgba(191,95,255,.35); color:var(--c25); }
+.btn-purple:hover { background:rgba(191,95,255,.22); }
+
+.year-headers { display:grid; grid-template-columns:140px repeat(4,1fr); border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:53px; z-index:199; }
+.yh-spacer { border-right:1px solid var(--border); }
+.yhcell { padding:11px 14px; text-align:center; border-left:1px solid var(--border); }
+.yhcell-25{border-color:rgba(191,95,255,.25);}.yhcell-24{border-color:rgba(0,229,255,.25);}
+.yhcell-23{border-color:rgba(168,255,62,.25);}.yhcell-22{border-color:rgba(255,61,113,.25);}
+.ynum { font-family:'Space Mono',monospace; font-size:18px; font-weight:700; display:block; margin-bottom:2px; }
+.ynum-25{color:var(--c25);}.ynum-24{color:var(--c24);}.ynum-23{color:var(--c23);}.ynum-22{color:var(--c22);}
+.ysub { font-size:9px; font-family:'Space Mono',monospace; color:var(--muted); letter-spacing:.13em; text-transform:uppercase; }
+.ysrc { font-size:8px; font-family:'Space Mono',monospace; color:var(--muted); margin-top:2px; opacity:.6; }
+.gallery-body { flex:1; }
+.house-row { display:grid; grid-template-columns:140px repeat(4,1fr); border-bottom:1px solid var(--border); animation:fadeUp .35s ease both; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.house-label { display:flex; flex-direction:column; padding:12px 10px; border-right:1px solid var(--border); gap:4px; }
+.hl-num    { font-family:'Space Mono',monospace; font-size:20px; font-weight:700; color:var(--c24); line-height:1; }
+.hl-name   { font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; word-break:break-all; }
+.hl-coords { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); line-height:1.7; border-top:1px solid var(--border); padding-top:6px; margin-top:4px; }
+.hl-actions { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+.hl-btn { font-family:'Space Mono',monospace; font-size:9px; padding:3px 8px; border-radius:4px; cursor:pointer; border:1px solid; text-align:center; transition:all .2s; }
+.hl-btn-save { background:rgba(168,255,62,.1); border-color:rgba(168,255,62,.3); color:var(--c23); display:none; }
+.hl-btn-save:hover { background:rgba(168,255,62,.25); }
+.hl-btn-del  { background:rgba(255,61,113,.07); border-color:rgba(255,61,113,.25); color:var(--c22); }
+.hl-btn-del:hover { background:rgba(255,61,113,.2); }
+.hl-db-status { font-family:'Space Mono',monospace; font-size:8px; margin-top:4px; }
+.status-saved{color:var(--c23);}.status-unsaved{color:var(--muted);}.status-saving{color:var(--c24);}
+.map-cell { padding:8px; border-left:1px solid var(--border); position:relative; }
+.map-cell-25{border-color:rgba(191,95,255,.12);}.map-cell-24{border-color:rgba(0,229,255,.12);}
+.map-cell-23{border-color:rgba(168,255,62,.12);}.map-cell-22{border-color:rgba(255,61,113,.12);}
+.map-wrapper { width:100%; border-radius:8px; overflow:hidden; position:relative; background:#111; }
+.lmap { width:100%; height:240px; }
+.map-badge { position:absolute; top:7px; left:7px; z-index:500; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; padding:3px 8px; border-radius:4px; pointer-events:none; }
+.badge-25{background:rgba(191,95,255,.2);color:var(--c25);border:1px solid rgba(191,95,255,.45);}
+.badge-24{background:rgba(0,229,255,.18);color:var(--c24);border:1px solid rgba(0,229,255,.4);}
+.badge-23{background:rgba(168,255,62,.18);color:var(--c23);border:1px solid rgba(168,255,62,.4);}
+.badge-22{background:rgba(255,61,113,.18);color:var(--c22);border:1px solid rgba(255,61,113,.4);}
+.src-badge { position:absolute; bottom:6px; right:6px; z-index:500; font-family:'Space Mono',monospace; font-size:8px; padding:2px 6px; border-radius:3px; pointer-events:none; background:rgba(0,0,0,.55); color:rgba(255,255,255,.45); }
+.crop-badge { position:absolute; bottom:6px; left:6px; z-index:500; font-family:'Space Mono',monospace; font-size:8px; padding:2px 6px; border-radius:3px; cursor:pointer; background:rgba(168,255,62,.15); color:var(--c23); border:1px solid rgba(168,255,62,.35); transition:all .2s; }
+.crop-badge:hover { background:rgba(168,255,62,.3); }
+.crop-badge.pending { background:rgba(0,229,255,.1); color:var(--c24); border-color:rgba(0,229,255,.3); cursor:default; }
+.edit-btn { position:absolute; top:7px; right:7px; z-index:600; font-family:'Space Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; background:rgba(0,229,255,.15); color:var(--c24); border:1px solid rgba(0,229,255,.4); transition:all .2s; }
+.edit-btn:hover { background:rgba(0,229,255,.3); }
+.edit-btn.active { background:rgba(168,255,62,.2); color:var(--c23); border-color:rgba(168,255,62,.5); }
+.drag-hint { position:absolute; top:30px; right:7px; z-index:600; font-family:'Space Mono',monospace; font-size:8px; padding:2px 6px; border-radius:3px; pointer-events:none; background:rgba(168,255,62,.12); color:var(--c23); border:1px solid rgba(168,255,62,.3); display:none; }
+.map-loader { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:var(--card); z-index:400; border-radius:8px; transition:opacity .4s; }
+.spinner { width:24px; height:24px; border:2px solid var(--border); border-top-color:var(--c24); border-radius:50%; animation:spin .7s linear infinite; }
+.coord-changed { color:var(--c23) !important; }
+
+/* Crop Modal */
+#cropModal { position:fixed; inset:0; z-index:1000; display:none; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:20px; }
+#cropModal.open { display:flex; }
+.modal-box { background:var(--card); border:1px solid var(--border); border-radius:16px; max-width:800px; width:100%; padding:24px; position:relative; max-height:90vh; overflow-y:auto; }
+.modal-title { font-size:14px; font-weight:700; margin-bottom:16px; font-family:'Space Mono',monospace; color:var(--c24); }
+.modal-close { position:absolute; top:14px; right:16px; cursor:pointer; font-size:20px; color:var(--muted); background:none; border:none; }
+.modal-close:hover { color:var(--text); }
+.crops-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+.crop-item { border-radius:8px; overflow:hidden; border:1px solid var(--border); }
+.crop-item img { width:100%; display:block; }
+.crop-item .crop-meta { padding:8px 10px; background:var(--surface); font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); border-top:1px solid var(--border); }
+.crop-pending { display:flex; align-items:center; justify-content:center; height:180px; color:var(--muted); font-family:'Space Mono',monospace; font-size:11px; flex-direction:column; gap:8px; }
+
+/* DB Status Bar */
+#dbStatusBar { position:fixed; bottom:0; left:0; right:0; z-index:500; padding:6px 22px; font-family:'Space Mono',monospace; font-size:10px; background:var(--surface); border-top:1px solid var(--border); display:none; align-items:center; gap:18px; }
+#dbStatusBar.show { display:flex; }
+.db-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; }
+.db-dot.ok  { background:var(--c23); box-shadow:0 0 6px var(--c23); }
+.db-dot.err { background:var(--c22); }
+.leaflet-control-attribution{background:rgba(0,0,0,.5)!important;color:rgba(255,255,255,.2)!important;font-size:7px!important;}
+.leaflet-control-zoom{display:none!important;}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCREEN -->
+<div id="uploadScreen" class="screen active">
+    <div class="grid-bg"></div>
+    <div class="brand">// SATVIEW</div>
+    <h1 class="hero">House Boundary<br><span>Satellite Viewer</span></h1>
+    <p class="subtitle">Load from CSV, Database, or both — conflict resolver built in</p>
+    <div class="source-row">
+        <div class="source-card" onclick="document.getElementById('fileInput').click()">
+            <span class="icon">📂</span>
+            <h3>Load from CSV</h3>
+            <p>Checks for duplicates<br>before importing.</p>
+            <span class="badge badge-csv">CSV FILE</span>
+        </div>
+        <div class="source-card db-card" onclick="loadFromDatabase()">
+            <span class="icon">🗄️</span>
+            <h3>Load from Database</h3>
+            <p>Fetch all saved houses<br>from SQLite database.</p>
+            <span class="badge badge-db">DATABASE</span>
+        </div>
+        <div class="source-card both-card" onclick="loadBoth()">
+            <span class="icon">⚡</span>
+            <h3>Load Both</h3>
+            <p>DB records + new CSV.<br>Conflict resolver included.</p>
+            <span class="badge badge-both">MERGE</span>
+        </div>
+    </div>
+    <div class="format-info">
+        <span class="tag">▸ CSV FORMAT — 8 values per row (4 corners) + optional label</span>
+        <code>lat1,lon1,lat2,lon2,lat3,lon3,lat4,lon4[,label]
+31.5204,74.3587,31.5214,74.3587,31.5214,74.3597,31.5204,74.3597,House A</code>
+    </div>
+    <div id="alertBox"></div>
+    <input type="file" id="fileInput" accept=".csv,.txt">
+</div>
+
+<!-- DUPLICATE RESOLUTION SCREEN -->
+<div id="dupeScreen" class="screen">
+    <div class="dupe-header">
+        <div class="dupe-header-left">
+            <h2>⚠ Duplicate Detection</h2>
+            <p id="dupeSubtitle">Resolve conflicts before importing</p>
+        </div>
+        <div class="dupe-header-right">
+            <button class="btn btn-outline" onclick="cancelDupe()">✕ Cancel</button>
+            <button class="btn btn-green" id="confirmImportBtn" onclick="confirmImport()" disabled style="opacity:.5">✓ Confirm Import</button>
+        </div>
+    </div>
+
+    <div class="dupe-summary">
+        <div class="dupe-stat"><span class="num num-new" id="dupeNewCount">0</span><span class="lbl">New Houses</span></div>
+        <div class="dupe-stat"><span class="num num-conflict" id="dupeConflictCount">0</span><span class="lbl">Conflicts</span></div>
+        <div class="dupe-stat"><span class="num num-resolved" id="dupeResolvedCount">0</span><span class="lbl">Resolved</span></div>
+        <div class="dupe-stat" style="margin-left:auto;"><span class="num num-total" id="dupeTotalCount">0</span><span class="lbl">Total in CSV</span></div>
+    </div>
+
+    <div class="apply-all-bar" id="applyAllBar" style="display:none;">
+        <span>Apply to ALL conflicts at once:</span>
+        <button class="aa-btn aa-db"   onclick="applyAll('keep_db')">🗄 Keep all DB versions</button>
+        <button class="aa-btn aa-csv"  onclick="applyAll('keep_csv')">📂 Use all CSV versions</button>
+        <button class="aa-btn aa-both" onclick="applyAll('keep_both')">＋ Duplicate all</button>
+    </div>
+
+    <div class="conflicts-body" id="conflictsBody"></div>
+    <div class="new-rows-section" id="newRowsSection" style="display:none;">
+        <h3>✓ <span id="newRowsCount">0</span> New Houses — will be imported automatically</h3>
+        <div class="new-rows-list" id="newRowsList"></div>
+    </div>
+</div>
+
+<!-- GALLERY SCREEN -->
+<div id="galleryScreen" class="screen">
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <span class="top-bar-brand">// SATVIEW</span>
+            <span class="top-bar-count" id="houseCount"></span>
+        </div>
+        <div class="top-bar-right">
+            <button class="btn btn-purple" onclick="document.getElementById('fileInput2').click()">+ Import CSV</button>
+            <button class="btn btn-green"  onclick="exportCSV()">⬇ Export CSV</button>
+            <button class="btn btn-outline" onclick="resetView()">← New Load</button>
+        </div>
+        <input type="file" id="fileInput2" accept=".csv,.txt" style="display:none">
+    </div>
+    <div class="year-headers">
+        <div class="yh-spacer"></div>
+        <div class="yhcell yhcell-25"><span class="ynum ynum-25">2025</span><span class="ysub">Current</span><div class="ysrc" id="src-25">—</div></div>
+        <div class="yhcell yhcell-24"><span class="ynum ynum-24">2024</span><span class="ysub">1 Yr Ago</span><div class="ysrc" id="src-24">—</div></div>
+        <div class="yhcell yhcell-23"><span class="ynum ynum-23">2023</span><span class="ysub">2 Yrs Ago</span><div class="ysrc" id="src-23">—</div></div>
+        <div class="yhcell yhcell-22"><span class="ynum ynum-22">2022</span><span class="ysub">3 Yrs Ago</span><div class="ysrc" id="src-22">—</div></div>
+    </div>
+    <div class="gallery-body" id="galleryBody"></div>
+</div>
+
+<!-- CROP MODAL -->
+<div id="cropModal">
+    <div class="modal-box">
+        <button class="modal-close" onclick="closeCropModal()">✕</button>
+        <div class="modal-title" id="modalTitle">Satellite Crops</div>
+        <div class="crops-grid" id="cropsGrid"></div>
+    </div>
+</div>
+
+<!-- PROGRESS OVERLAY -->
+<div id="progressOverlay">
+    <div class="progress-spinner"></div>
+    <div class="progress-text" id="progressText">Checking for duplicates…</div>
+</div>
+
+<!-- DB STATUS BAR -->
+<div id="dbStatusBar">
+    <span><span class="db-dot ok" id="dbDot"></span><span id="dbStatusText">Connected</span></span>
+</div>
+
+<script>
+const API = 'http://localhost:8000/api';
+const WAYBACK_BASE     = 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile';
+const WAYBACK_RELEASES = {2025:{release:13192,label:'2025-12-18'},2024:{release:16453,label:'2024-12-12'},2023:{release:56102,label:'2023-12-07'},2022:{release:57659,label:'2022-12-08'}};
+const YEARS  = [2025,2024,2023,2022];
+const COLORS = {2025:'#bf5fff',2024:'#00e5ff',2023:'#a8ff3e',2022:'#ff3d71'};
+const BCLASS = {2025:'badge-25',2024:'badge-24',2023:'badge-23',2022:'badge-22'};
+
+let boundaries   = [];
+let allMaps      = [];
+let waybackConf  = null;
+let dbOnline     = false;
+let dupeCheckData   = null;
+let dupeResolutions = {};
+let pendingFile     = null;
+
+// ── Screen management ─────────────────────────────
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+// ── DB health ─────────────────────────────────────
+async function checkDB() {
+    try { const r = await fetch(`${API}/health`,{signal:AbortSignal.timeout(3000)}); dbOnline = r.ok; }
+    catch { dbOnline = false; }
+    const bar = document.getElementById('dbStatusBar');
+    bar.classList.add('show');
+    document.getElementById('dbDot').className = dbOnline ? 'db-dot ok' : 'db-dot err';
+    document.getElementById('dbStatusText').textContent = dbOnline
+        ? 'Backend connected — duplicate checking & crops enabled'
+        : 'Backend offline — CSV-only mode (no duplicate check)';
+}
+checkDB();
+
+// ── Wayback config ────────────────────────────────
+async function fetchWaybackConfig() {
+    try {
+        const res = await fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json');
+        if (!res.ok) throw 0;
+        const config = await res.json();
+        const byYear = {};
+        for (const [rnum,info] of Object.entries(config)) {
+            const m = (info.itemTitle||'').match(/Wayback (\d{4})-(\d{2}-\d{2})/);
+            if (!m) continue;
+            const year = parseInt(m[1]);
+            if (year < 2022 || year > 2025) continue;
+            const n = parseInt(rnum);
+            if (!byYear[year] || n > byYear[year].release) {
+                const tileUrl = info.itemURL.replace('{level}','{z}').replace('{row}','{y}').replace('{col}','{x}');
+                byYear[year] = {release:n,label:`${m[1]}-${m[2]}`,tileUrl};
+            }
+        }
+        for (const y of YEARS) if (!byYear[y]) byYear[y]={...WAYBACK_RELEASES[y],tileUrl:`${WAYBACK_BASE}/${WAYBACK_RELEASES[y].release}/{z}/{y}/{x}`};
+        return byYear;
+    } catch {
+        const f={};
+        for (const [y,v] of Object.entries(WAYBACK_RELEASES)) f[y]={...v,tileUrl:`${WAYBACK_BASE}/${v.release}/{z}/{y}/{x}`};
+        return f;
+    }
+}
+
+// ── File handlers ─────────────────────────────────
+document.getElementById('fileInput').addEventListener('change',  e => handleFileUpload(e.target.files[0]));
+document.getElementById('fileInput2').addEventListener('change', e => handleFileUpload(e.target.files[0]));
+
+async function handleFileUpload(file) {
+    if (!file) return;
+    pendingFile = file;
+
+    if (!dbOnline) {
+        // Offline: parse directly, no duplicate check possible
+        const parsed = parseCSVText(await file.text());
+        if (!parsed.length) { showAlert('No valid rows. Check format.', 'error'); return; }
+        boundaries = parsed;
+        await launchGallery();
+        return;
+    }
+
+    showProgress('Scanning for duplicates…');
+    try {
+        const fd = new FormData(); fd.append('file', file);
+        const res  = await fetch(`${API}/import/check`, {method:'POST',body:fd});
+        const data = await res.json();
+        hideProgress();
+
+        if (data.conflict_count === 0) {
+            // No conflicts — import immediately
+            showProgress(`No duplicates — importing ${data.new_count} house(s)…`);
+            await doConfirmedImport({new_rows: data.new_rows, resolutions: []});
+            hideProgress();
+        } else {
+            dupeCheckData   = data;
+            dupeResolutions = {};
+            showDupeScreen(data);
+        }
+    } catch(e) {
+        hideProgress();
+        showAlert('Duplicate check failed: ' + e.message, 'error');
+    }
+}
+
+// ── Duplicate resolution screen ───────────────────
+function showDupeScreen(data) {
+    showScreen('dupeScreen');
+    document.getElementById('dupeSubtitle').textContent = `${data.conflict_count} conflict${data.conflict_count!==1?'s':''} found — choose how to handle each one`;
+    document.getElementById('dupeNewCount').textContent      = data.new_count;
+    document.getElementById('dupeConflictCount').textContent = data.conflict_count;
+    document.getElementById('dupeTotalCount').textContent    = data.new_count + data.conflict_count;
+    document.getElementById('dupeResolvedCount').textContent = '0';
+    document.getElementById('applyAllBar').style.display     = data.conflict_count > 1 ? 'flex' : 'none';
+
+    const body = document.getElementById('conflictsBody');
+    body.innerHTML = '';
+    data.conflicts.forEach((c, idx) => buildConflictCard(body, c, idx));
+
+    // New rows preview
+    const nrSection = document.getElementById('newRowsSection');
+    const nrList    = document.getElementById('newRowsList');
+    if (data.new_rows.length) {
+        nrSection.style.display = 'block';
+        document.getElementById('newRowsCount').textContent = data.new_rows.length;
+        nrList.innerHTML = '';
+        data.new_rows.forEach(row => {
+            const c = row.coords;
+            const div = document.createElement('div');
+            div.className = 'new-row-item';
+            div.innerHTML = `<span class="nri-label">✓ ${row.label}</span><span class="nri-coords">${c[0][0].toFixed(5)},${c[0][1].toFixed(5)} … ${c[3][0].toFixed(5)},${c[3][1].toFixed(5)}</span>`;
+            nrList.appendChild(div);
+        });
+    } else { nrSection.style.display = 'none'; }
+
+    requestAnimationFrame(() => data.conflicts.forEach((c, idx) => buildMiniMaps(c, idx)));
+    updateResolvedCount();
+}
+
+function buildConflictCard(container, conflict, idx) {
+    const db  = conflict.db;
+    const csv = conflict.csv;
+    const card = document.createElement('div');
+    card.className = 'conflict-card';
+    card.id = `conflict-card-${idx}`;
+    card.innerHTML = `
+        <div class="conflict-top">
+            <div>
+                <span class="conflict-num">⚠ Conflict #${idx+1}</span>
+                <span class="conflict-dist">centres ~${conflict.dist_m}m apart</span>
+                <span class="conflict-resolution-label" id="res-label-${idx}"></span>
+            </div>
+            <span class="conflict-tag">DUPLICATE</span>
+        </div>
+        <div class="conflict-body">
+            <div class="side side-db">
+                <div class="side-label">🗄 DATABASE — existing record</div>
+                <div class="side-name">${db.label}</div>
+                <div class="side-meta">DB ID #${db.id} · saved ${(db.created_at||'').slice(0,10)||'—'}</div>
+                <div id="mini-map-db-${idx}" class="mini-map"></div>
+            </div>
+            <div class="side side-csv">
+                <div class="side-label">📂 CSV — incoming row</div>
+                <div class="side-name">${csv.label}</div>
+                <div class="side-meta">Row ${csv.row_index+1} in uploaded file</div>
+                <div id="mini-map-csv-${idx}" class="mini-map"></div>
+            </div>
+        </div>
+        <div class="conflict-actions">
+            <button class="action-btn action-db"   id="action-db-${idx}"   onclick="setResolution(${idx},'keep_db')">
+                <span class="abicon">🗄</span>
+                <span class="ablbl">Keep DB</span>
+                <span class="abdesc">Ignore CSV row, keep existing</span>
+            </button>
+            <button class="action-btn action-csv"  id="action-csv-${idx}"  onclick="setResolution(${idx},'keep_csv')">
+                <span class="abicon">📂</span>
+                <span class="ablbl">Use CSV</span>
+                <span class="abdesc">Overwrite DB with CSV coords</span>
+            </button>
+            <button class="action-btn action-both" id="action-both-${idx}" onclick="setResolution(${idx},'keep_both')">
+                <span class="abicon">＋</span>
+                <span class="ablbl">Keep Both</span>
+                <span class="abdesc">Add CSV as a new record</span>
+            </button>
+        </div>
+    `;
+    container.appendChild(card);
+}
+
+function buildMiniMaps(conflict, idx) {
+    function mini(divId, coords, color) {
+        const el = document.getElementById(divId);
+        if (!el) return;
+        const map = L.map(divId, {zoomControl:false,attributionControl:false,scrollWheelZoom:false,doubleClickZoom:false,dragging:false,keyboard:false,touchZoom:false});
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+        const poly = L.polygon(coords,{color,weight:2,fillColor:color,fillOpacity:.2}).addTo(map);
+        coords.forEach(c => L.circleMarker(c,{radius:4,color,fillColor:'#fff',fillOpacity:1,weight:2}).addTo(map));
+        map.fitBounds(poly.getBounds(),{padding:[16,16]});
+    }
+    const db  = conflict.db;
+    mini(`mini-map-db-${idx}`,  [[db.lat1,db.lon1],[db.lat2,db.lon2],[db.lat3,db.lon3],[db.lat4,db.lon4]], '#00e5ff');
+    mini(`mini-map-csv-${idx}`, conflict.csv.coords, '#ff3d71');
+}
+
+function setResolution(idx, action) {
+    dupeResolutions[idx] = action;
+
+    // Button highlights
+    ['db','csv','both'].forEach(a => {
+        const btn = document.getElementById(`action-${a}-${idx}`);
+        if (btn) btn.className = btn.className.replace(/\s*selected-\w+/g,'');
+    });
+    const key = action.replace('keep_','');
+    const activeBtn = document.getElementById(`action-${key}-${idx}`);
+    if (activeBtn) activeBtn.classList.add(`selected-${key}`);
+
+    // Card border
+    const card = document.getElementById(`conflict-card-${idx}`);
+    if (card) card.className = `conflict-card resolved-${key}`;
+
+    // Resolution label
+    const labels = {keep_db:'🗄 Keeping DB version', keep_csv:'📂 Using CSV version', keep_both:'＋ Keeping both'};
+    const rl = document.getElementById(`res-label-${idx}`);
+    if (rl) { rl.textContent = labels[action]; rl.style.color = {keep_db:'var(--c24)',keep_csv:'var(--c22)',keep_both:'var(--c25)'}[action]; }
+
+    updateResolvedCount();
+}
+
+function applyAll(action) {
+    dupeCheckData.conflicts.forEach((_,idx) => setResolution(idx, action));
+}
+
+function updateResolvedCount() {
+    const total    = dupeCheckData ? dupeCheckData.conflict_count : 0;
+    const resolved = Object.keys(dupeResolutions).length;
+    const el = document.getElementById('dupeResolvedCount');
+    el.textContent = resolved;
+    el.style.color = resolved === total ? 'var(--c23)' : 'var(--muted)';
+    const btn = document.getElementById('confirmImportBtn');
+    btn.disabled    = resolved < total;
+    btn.style.opacity = resolved < total ? '.5' : '1';
+    btn.title = resolved < total ? `Resolve ${total-resolved} more conflict(s) to continue` : '';
+}
+
+async function confirmImport() {
+    const total = dupeCheckData.conflict_count;
+    if (Object.keys(dupeResolutions).length < total) {
+        alert(`Please resolve all ${total} conflicts first.`); return;
+    }
+    const resolutions = dupeCheckData.conflicts.map((c, idx) => ({
+        action: dupeResolutions[idx], db_id: c.db.id, csv_row: c.csv
+    }));
+    showProgress('Saving to database & generating satellite crops…');
+    await doConfirmedImport({new_rows: dupeCheckData.new_rows, resolutions});
+    hideProgress();
+}
+
+async function doConfirmedImport(payload) {
+    try {
+        const res  = await fetch(`${API}/import/confirmed`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const data = await res.json();
+        showAlert(`✓ ${data.inserted} inserted, ${data.updated} updated.`, 'success');
+    } catch(e) { showAlert('Import failed: ' + e.message, 'error'); }
+    await loadFromDatabase();
+}
+
+function cancelDupe() {
+    dupeCheckData = null; dupeResolutions = {}; pendingFile = null;
+    showScreen('uploadScreen');
+}
+
+// ── DB load ───────────────────────────────────────
+async function loadFromDatabase() {
+    if (!dbOnline) { showAlert('Backend is offline.','error'); return; }
+    showProgress('Loading from database…');
+    try {
+        const rows = await (await fetch(`${API}/houses`)).json();
+        if (!rows.length) { hideProgress(); showAlert('Database is empty.','info'); return; }
+        boundaries = rows.map(r => ({
+            id:r.id, label:r.label,
+            coords:[[r.lat1,r.lon1],[r.lat2,r.lon2],[r.lat3,r.lon3],[r.lat4,r.lon4]],
+            dbId:r.id, dirty:false, crops:{}
+        }));
+        await launchGallery();
+        hideProgress();
+        boundaries.forEach(h => loadCropInfo(h));
+    } catch(e) { hideProgress(); showAlert('DB load failed: '+e.message,'error'); }
+}
+
+async function loadCropInfo(house) {
+    if (!dbOnline || !house.dbId) return;
+    try {
+        const crops = await (await fetch(`${API}/houses/${house.dbId}/crops`)).json();
+        crops.forEach(c => { house.crops[c.year] = c; });
+        updateCropBadges(house);
+    } catch {}
+}
+
+async function loadBoth() {
+    if (!dbOnline) { showAlert('Backend offline — CSV only.','info'); document.getElementById('fileInput').click(); return; }
+    await loadFromDatabase();
+    document.getElementById('fileInput').click();
+}
+
+function parseCSVText(text) {
+    const houses = [];
+    text.trim().split('\n').forEach((line,i) => {
+        line = line.trim();
+        if (!line || line.startsWith('#')) return;
+        const v = line.split(',');
+        const nums = v.slice(0,8).map(x => parseFloat(x.trim()));
+        if (nums.length < 8 || nums.some(isNaN)) return;
+        const label = v[8] ? v[8].trim() : `House ${i+1}`;
+        houses.push({id:null,label,coords:[[nums[0],nums[1]],[nums[2],nums[3]],[nums[4],nums[5]],[nums[6],nums[7]]],dbId:null,dirty:false,crops:{}});
+    });
+    return houses;
+}
+
+async function launchGallery() {
+    if (!waybackConf) waybackConf = await fetchWaybackConfig();
+    buildGallery();
+}
+
+// ── Map build ─────────────────────────────────────
+function buildMap(divId, house, year, isEditSource) {
+    const color = COLORS[year];
+    const conf  = waybackConf[year];
+    const map = L.map(divId,{zoomControl:false,attributionControl:true,scrollWheelZoom:false,doubleClickZoom:false,dragging:false,keyboard:false,touchZoom:false,boxZoom:false});
+    L.tileLayer(conf.tileUrl||`${WAYBACK_BASE}/${conf.release}/{z}/{y}/{x}`,{maxZoom:21,attribution:`© Esri ${conf.label}`}).addTo(map);
+    map._houseRef=house; map._isEditSource=isEditSource; map._color=color;
+    function redraw() {
+        if (map._polygon) map.removeLayer(map._polygon);
+        map._polygon = L.polygon(house.coords,{color,weight:2.5,fillColor:color,fillOpacity:.18,interactive:false}).addTo(map);
+    }
+    redraw(); map._redraw=redraw;
+    map._corners = house.coords.map((c,ci) => {
+        const m = L.circleMarker(c,{radius:5,color,fillColor:'#fff',fillOpacity:1,weight:2.5}).addTo(map);
+        m._ci=ci; return m;
+    });
+    map.fitBounds(L.latLngBounds(house.coords),{padding:[22,22]});
+    allMaps.push(map); return map;
+}
+
+function setEditMode(map, on) {
+    map._editMode=on;
+    on ? map.dragging.enable() : map.dragging.disable();
+    on ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
+    const house = map._houseRef;
+    map._corners.forEach((cm,ci) => {
+        map.removeLayer(cm);
+        const c = house.coords[ci];
+        const newM = on
+            ? L.marker(c,{draggable:true,icon:L.divIcon({className:'',html:`<div style="width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid ${map._color};cursor:grab;box-shadow:0 0 6px rgba(0,0,0,.6);"></div>`,iconSize:[14,14],iconAnchor:[7,7]})})
+            : L.circleMarker(c,{radius:5,color:map._color,fillColor:'#fff',fillOpacity:1,weight:2.5});
+        newM._ci=ci; newM.addTo(map);
+        if (on) newM.on('drag', e => {
+            const ll = e.target.getLatLng();
+            house.coords[ci]=[ll.lat,ll.lng];
+            map._redraw();
+            allMaps.forEach(om => { if(om!==map && om._houseRef===house) om._sync(); });
+            updateLabelCoords(house);
+            house.dirty=true; updateDirtyUI(house);
+        });
+        map._corners[ci]=newM;
+    });
+}
+
+function attachSync(map) {
+    map._sync = function() {
+        const house=map._houseRef; map._redraw();
+        map._corners.forEach((cm,ci) => {
+            map.removeLayer(cm);
+            const nm=L.circleMarker(house.coords[ci],{radius:5,color:map._color,fillColor:'#fff',fillOpacity:1,weight:2.5}).addTo(map);
+            nm._ci=ci; map._corners[ci]=nm;
+        });
+    };
+}
+
+// ── Gallery ───────────────────────────────────────
+function calcCenter(coords) {
+    return { lat:(coords.reduce((s,c)=>s+c[0],0)/4).toFixed(6), lon:(coords.reduce((s,c)=>s+c[1],0)/4).toFixed(6) };
+}
+
+function buildGallery() {
+    const body = document.getElementById('galleryBody');
+    body.innerHTML='';
+    document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
+    YEARS.forEach(y => { const el=document.getElementById(`src-${String(y).slice(-2)}`); if(el&&waybackConf[y]) el.textContent=waybackConf[y].label; });
+
+    boundaries.forEach((house,hIdx) => {
+        if(!house.id) house.id=hIdx+1;
+        const center=calcCenter(house.coords);
+        const row=document.createElement('div');
+        row.className='house-row'; row.id=`row-${house.id}`;
+        row.style.animationDelay=`${hIdx*.04}s`;
+        const dbStatus=house.dbId?`<span class="status-saved">● saved</span>`:`<span class="status-unsaved">○ not in DB</span>`;
+        const label=document.createElement('div');
+        label.className='house-label';
+        label.innerHTML=`
+            <div class="hl-num">#${String(house.id).padStart(2,'0')}</div>
+            <div class="hl-name">${house.label||''}</div>
+            <div class="hl-coords" id="coords-${house.id}">${center.lat}<br>${center.lon}</div>
+            <div class="hl-actions">
+                <div class="hl-btn hl-btn-save" id="save-btn-${house.id}" onclick="saveToDb(${house.id})">💾 Save to DB</div>
+                <div class="hl-btn hl-btn-del"  onclick="deleteHouse(${house.id})">🗑 Delete</div>
+            </div>
+            <div class="hl-db-status" id="dbstatus-${house.id}">${dbStatus}</div>
+        `;
+        row.appendChild(label);
+        YEARS.forEach((year,yIdx) => {
+            const mapId=`lmap-h${house.id}-y${year}`;
+            const suffix=String(year).slice(-2);
+            const conf=waybackConf[year];
+            const isFirst=yIdx===0;
+            const cell=document.createElement('div');
+            cell.className=`map-cell map-cell-${suffix}`;
+            cell.innerHTML=`
+                <div class="map-wrapper">
+                    <div id="${mapId}" class="lmap"></div>
+                    <div class="map-badge ${BCLASS[year]}">${year}</div>
+                    <div class="src-badge">${conf.label}</div>
+                    <div class="crop-badge pending" id="crop-badge-${house.id}-${year}">⏳ crop pending</div>
+                    ${isFirst?`<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button><div class="drag-hint" id="hint-${house.id}">drag corners</div>`:''}
+                    <div class="map-loader" id="ldr-${mapId}"><div class="spinner"></div></div>
+                </div>`;
+            row.appendChild(cell);
+        });
+        body.appendChild(row);
+    });
+
+    showScreen('galleryScreen');
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        boundaries.forEach(house => {
+            YEARS.forEach((year,yIdx) => {
+                const mapId=`lmap-h${house.id}-y${year}`;
+                const map=buildMap(mapId,house,year,yIdx===0);
+                attachSync(map);
+                setTimeout(() => { const ldr=document.getElementById(`ldr-${mapId}`); if(ldr){ldr.style.opacity='0';setTimeout(()=>ldr.remove(),400);} },2000);
+            });
+        });
+    }));
+}
+
+// ── Edit mode ─────────────────────────────────────
+function toggleEdit(houseId) {
+    const house=boundaries.find(h=>h.id===houseId);
+    const editMap=allMaps.find(m=>m._houseRef===house&&m._isEditSource);
+    if(!editMap) return;
+    const on=!editMap._editMode;
+    setEditMode(editMap,on);
+    const btn=document.getElementById(`editbtn-${houseId}`);
+    const hint=document.getElementById(`hint-${houseId}`);
+    btn.textContent=on?'✓ Done':'✎ Edit';
+    btn.classList.toggle('active',on);
+    hint.style.display=on?'block':'none';
+}
+
+function updateLabelCoords(house) {
+    const el=document.getElementById(`coords-${house.id}`);
+    if(!el) return;
+    const c=calcCenter(house.coords);
+    el.innerHTML=`<span class="coord-changed">${c.lat}<br>${c.lon}</span>`;
+}
+
+function updateDirtyUI(house) {
+    const btn=document.getElementById(`save-btn-${house.id}`);
+    const status=document.getElementById(`dbstatus-${house.id}`);
+    if(btn) btn.style.display=(house.dirty&&dbOnline)?'block':'none';
+    if(status) status.innerHTML=house.dbId?(house.dirty?`<span class="status-unsaved">● unsaved changes</span>`:`<span class="status-saved">● saved</span>`):`<span class="status-unsaved">○ not in DB</span>`;
+}
+
+async function saveToDb(houseId) {
+    const house=boundaries.find(h=>h.id===houseId);
+    if(!house||!dbOnline) return;
+    const status=document.getElementById(`dbstatus-${houseId}`);
+    if(status) status.innerHTML=`<span class="status-saving">↑ saving…</span>`;
+    try {
+        const payload={coords:house.coords,label:house.label};
+        let res;
+        if(house.dbId) {
+            res=await fetch(`${API}/houses/${house.dbId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        } else {
+            res=await fetch(`${API}/houses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+            house.dbId=(await res.json()).id;
+        }
+        house.dirty=false; updateDirtyUI(house);
+        setTimeout(()=>loadCropInfo(house),8000);
+    } catch { if(status) status.innerHTML=`<span style="color:var(--c22)">✗ failed</span>`; }
+}
+
+async function deleteHouse(houseId) {
+    const house=boundaries.find(h=>h.id===houseId);
+    if(!house||!confirm(`Delete house #${houseId}?`)) return;
+    if(house.dbId&&dbOnline) await fetch(`${API}/houses/${house.dbId}`,{method:'DELETE'});
+    boundaries=boundaries.filter(h=>h.id!==houseId);
+    allMaps=allMaps.filter(m=>{ if(m._houseRef===house){try{m.remove()}catch{} return false;} return true; });
+    const row=document.getElementById(`row-${houseId}`); if(row) row.remove();
+    document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
+}
+
+// ── Crops ─────────────────────────────────────────
+function updateCropBadges(house) {
+    YEARS.forEach(year => {
+        const el=document.getElementById(`crop-badge-${house.id}-${year}`); if(!el) return;
+        const crop=house.crops[year];
+        if(crop&&crop.file_path) { el.className='crop-badge'; el.textContent='🖼 view crop'; el.onclick=()=>showCropModal(house); }
+        else { el.className='crop-badge pending'; el.textContent='⏳ crop pending'; el.onclick=null; }
+    });
+}
+
+function showCropModal(house) {
+    const modal=document.getElementById('cropModal');
+    document.getElementById('modalTitle').textContent=`#${house.id} — ${house.label} — Satellite Crops`;
+    const grid=document.getElementById('cropsGrid'); grid.innerHTML='';
+    YEARS.forEach(year => {
+        const crop=house.crops[year];
+        const div=document.createElement('div'); div.className='crop-item';
+        if(crop&&crop.file_path) {
+            const imgUrl=`http://localhost:8000/${crop.file_path.replace(/\\/g,'/')}`;
+            div.innerHTML=`<img src="${imgUrl}" alt="${year}" onerror="this.parentElement.innerHTML='<div class=\\'crop-pending\\'>Image not found</div>'"><div class="map-badge ${BCLASS[year]}" style="position:relative;top:0;left:0;margin:6px 0 0 6px;display:inline-block;">${year}</div><div class="crop-meta">📁 ${crop.file_path}<br>${crop.width}×${crop.height}px · ${(crop.file_size/1024).toFixed(1)} KB</div>`;
+        } else {
+            div.innerHTML=`<div class="crop-pending"><div class="spinner"></div><div>Generating ${year}…</div></div><div class="map-badge ${BCLASS[year]}" style="position:relative;top:0;left:0;margin:6px 0 0 6px;display:inline-block;">${year}</div>`;
+        }
+        grid.appendChild(div);
+    });
+    modal.classList.add('open');
+}
+function closeCropModal() { document.getElementById('cropModal').classList.remove('open'); }
+document.getElementById('cropModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeCropModal(); });
+
+// ── Export ────────────────────────────────────────
+function exportCSV() {
+    if(dbOnline) { window.open(`${API}/export/csv`,'_blank'); return; }
+    const rows=boundaries.map(h=>h.coords.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`).join(',')+`,${h.label||''}`);
+    const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='satview_export.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Progress ──────────────────────────────────────
+function showProgress(msg) { document.getElementById('progressText').textContent=msg; document.getElementById('progressOverlay').classList.add('show'); }
+function hideProgress()    { document.getElementById('progressOverlay').classList.remove('show'); }
+
+// ── Alert ─────────────────────────────────────────
+function showAlert(msg,type) {
+    const el=document.getElementById('alertBox'); el.textContent=msg; el.className=type;
+    if(type==='success') setTimeout(()=>{el.className='';el.style.display='none';},3500);
+}
+
+// ── Reset ─────────────────────────────────────────
+function resetView() {
+    allMaps.forEach(m=>{try{m.remove()}catch{}});
+    allMaps=[]; boundaries=[]; dupeCheckData=null; dupeResolutions={};
+    document.getElementById('fileInput').value='';
+    document.getElementById('fileInput2').value='';
+    showScreen('uploadScreen');
+}
+</script>
+</body>
+</html>
