@@ -26,7 +26,9 @@ STATIC_DIR.mkdir(exist_ok=True)
 
 YEARS = [2025, 2024, 2023, 2022]
 WAYBACK_BASE = "https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile"
-WAYBACK_RELEASES = {
+
+# Fallback release numbers (used if live config fetch fails)
+WAYBACK_RELEASES_FALLBACK = {
     2025: 13192,
     2024: 16453,
     2023: 56102,
@@ -35,6 +37,41 @@ WAYBACK_RELEASES = {
 
 TILE_SIZE = 256   # pixels per OSM tile
 CROP_ZOOM = 19    # zoom level used for cropping
+
+# ── Fetch live Wayback release numbers ───────────────────────────────────────
+_wayback_releases: dict = {}   # populated at startup
+
+def fetch_wayback_releases() -> dict:
+    """Fetch latest release number per year from Esri Wayback config API."""
+    try:
+        r = requests.get(
+            "https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json",
+            timeout=10, headers={"User-Agent": "SatView/1.0"}
+        )
+        if not r.ok:
+            raise ValueError(f"HTTP {r.status_code}")
+        config = r.json()
+        by_year: dict = {}
+        for rnum_str, info in config.items():
+            title = info.get("itemTitle", "")
+            m = __import__("re").match(r"Wayback (\d{4})-\d{2}-\d{2}", title)
+            if not m:
+                continue
+            year = int(m.group(1))
+            if year < 2022 or year > 2025:
+                continue
+            n = int(rnum_str)
+            if year not in by_year or n > by_year[year]:
+                by_year[year] = n
+        # Fill any missing years from fallback
+        for y, v in WAYBACK_RELEASES_FALLBACK.items():
+            if y not in by_year:
+                by_year[y] = v
+        print("✓ Wayback releases resolved:", {y: by_year[y] for y in YEARS if y in by_year})
+        return by_year
+    except Exception as e:
+        print(f"⚠ Wayback config fetch failed ({e}), using fallback release numbers")
+        return dict(WAYBACK_RELEASES_FALLBACK)
 
 # ── Database ──────────────────────────────────────────────────────────────────
 def get_db():
@@ -74,6 +111,8 @@ def init_db():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    global _wayback_releases
+    _wayback_releases = fetch_wayback_releases()
     yield
 
 app = FastAPI(title="SatView API", lifespan=lifespan)
@@ -112,7 +151,9 @@ def crop_satellite(house_id: int, coords: list[list[float]], year: int) -> dict:
     Download tiles for a house boundary, stitch them, crop the bounding box,
     save to crops/<house_id>/<year>.jpg, return file info dict.
     """
-    release = WAYBACK_RELEASES.get(year, WAYBACK_RELEASES[2025])
+    # Use live-fetched release number, fallback to hardcoded
+    release = _wayback_releases.get(year) or WAYBACK_RELEASES_FALLBACK.get(year, WAYBACK_RELEASES_FALLBACK[2025])
+    print(f"  Using release {release} for year {year}")
     z = CROP_ZOOM
 
     lats = [c[0] for c in coords]

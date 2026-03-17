@@ -216,6 +216,19 @@ input[type="file"] { display:none; }
 .db-dot.err { background:var(--c22); }
 .leaflet-control-attribution{background:rgba(0,0,0,.5)!important;color:rgba(255,255,255,.2)!important;font-size:7px!important;}
 .leaflet-control-zoom{display:none!important;}
+
+/* ── Toast notifications ── */
+#toastContainer { position:fixed; bottom:48px; right:22px; z-index:9000; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.toast {
+    font-family:'Space Mono',monospace; font-size:11px; padding:10px 16px;
+    border-radius:8px; border:1px solid; max-width:320px;
+    animation: toastIn .25s ease;
+    pointer-events:none;
+}
+.toast.success { background:rgba(168,255,62,.12); border-color:rgba(168,255,62,.4); color:var(--c23); }
+.toast.error   { background:rgba(255,61,113,.12); border-color:rgba(255,61,113,.4); color:var(--c22); }
+.toast.warn    { background:rgba(0,229,255,.10);  border-color:rgba(0,229,255,.35); color:var(--c24); }
+@keyframes toastIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 </style>
 </head>
 <body>
@@ -332,6 +345,9 @@ input[type="file"] { display:none; }
 <div id="dbStatusBar">
     <span><span class="db-dot ok" id="dbDot"></span><span id="dbStatusText">Connected</span></span>
 </div>
+
+<!-- TOAST CONTAINER -->
+<div id="toastContainer"></div>
 
 <script>
 const API = 'http://localhost:8000/api';
@@ -615,7 +631,13 @@ async function loadFromDatabase() {
         }));
         await launchGallery();
         hideProgress();
-        boundaries.forEach(h => loadCropInfo(h));
+        boundaries.forEach(h => {
+            loadCropInfo(h).then(() => {
+                // If any year is still missing a crop, keep polling
+                const missing = YEARS.some(y => !h.crops[y]);
+                if (missing) pollUntilCropsReady(h, 10000, 10);
+            });
+        });
     } catch(e) { hideProgress(); showAlert('DB load failed: '+e.message,'error'); }
 }
 
@@ -623,9 +645,30 @@ async function loadCropInfo(house) {
     if (!dbOnline || !house.dbId) return;
     try {
         const crops = await (await fetch(`${API}/houses/${house.dbId}/crops`)).json();
-        crops.forEach(c => { house.crops[c.year] = c; });
+        crops.forEach(c => {
+            const wasEmpty = !house.crops[c.year];
+            house.crops[c.year] = c;
+            // If this year just got a crop, swap the map layer to the local image
+            if (wasEmpty && c.file_path) {
+                swapMapToCrop(house, c.year, c);
+            }
+        });
         updateCropBadges(house);
     } catch {}
+}
+
+// Poll until all 4 years have crops (used after save/regenerate)
+function pollUntilCropsReady(house, intervalMs=8000, maxAttempts=15) {
+    let attempts = 0;
+    const timer = setInterval(async () => {
+        attempts++;
+        await loadCropInfo(house);
+        const allDone = YEARS.every(y => house.crops[y] && house.crops[y].file_path);
+        if (allDone || attempts >= maxAttempts) {
+            clearInterval(timer);
+            if (allDone) showToast(`All crops ready for House #${house.id} ✓`, 'success');
+        }
+    }, intervalMs);
 }
 
 async function loadBoth() {
@@ -658,8 +701,19 @@ function buildMap(divId, house, year, isEditSource) {
     const color = COLORS[year];
     const conf  = waybackConf[year];
     const map = L.map(divId,{zoomControl:false,attributionControl:true,scrollWheelZoom:false,doubleClickZoom:false,dragging:false,keyboard:false,touchZoom:false,boxZoom:false});
-    L.tileLayer(conf.tileUrl||`${WAYBACK_BASE}/${conf.release}/{z}/{y}/{x}`,{maxZoom:21,attribution:`© Esri ${conf.label}`}).addTo(map);
-    map._houseRef=house; map._isEditSource=isEditSource; map._color=color;
+
+    map._houseRef=house; map._isEditSource=isEditSource; map._color=color; map._year=year; map._conf=conf;
+
+    // Use local crop image as base layer if available, else fall back to live Wayback tiles
+    const crop = house.crops && house.crops[year];
+    if (crop && crop.file_path) {
+        _applyLocalCropLayer(map, house, crop);
+    } else {
+        map._usingCrop = false;
+        L.tileLayer(conf.tileUrl||`${WAYBACK_BASE}/${conf.release}/{z}/{y}/{x}`,
+            {maxZoom:21,attribution:`© Esri ${conf.label} (live)`}).addTo(map);
+    }
+
     function redraw() {
         if (map._polygon) map.removeLayer(map._polygon);
         map._polygon = L.polygon(house.coords,{color,weight:2.5,fillColor:color,fillOpacity:.18,interactive:false}).addTo(map);
@@ -671,6 +725,32 @@ function buildMap(divId, house, year, isEditSource) {
     });
     map.fitBounds(L.latLngBounds(house.coords),{padding:[22,22]});
     allMaps.push(map); return map;
+}
+
+// Apply a local crop image as an ImageOverlay base layer
+function _applyLocalCropLayer(map, house, crop) {
+    const imgUrl = `${API.replace('/api','')}/${crop.file_path.replace(/\\/g,'/')}`;
+    const bounds = L.latLngBounds(house.coords);
+    // Remove any existing tile/image layer
+    if (map._baseLayer) { map.removeLayer(map._baseLayer); }
+    map._baseLayer  = L.imageOverlay(imgUrl, bounds, {opacity:1, attribution:'📁 Local crop'}).addTo(map);
+    map._usingCrop  = true;
+    map.fitBounds(bounds, {padding:[22,22]});
+    // Show a local-crop indicator badge
+    const badge = document.getElementById(`src-badge-${map._divId}`);
+    if (badge) { badge.textContent = '📁 local crop'; badge.style.color = 'var(--c23)'; }
+}
+
+// Swap a map's base layer to the local crop image (called when crops finish generating)
+function swapMapToCrop(house, year, crop) {
+    allMaps.forEach(map => {
+        if (map._houseRef === house && map._year === year) {
+            // Remove old tile layer if present
+            if (map._baseLayer) { map.removeLayer(map._baseLayer); }
+            else { map.eachLayer(l => { if (l instanceof L.TileLayer) map.removeLayer(l); }); }
+            _applyLocalCropLayer(map, house, crop);
+        }
+    });
 }
 
 function setEditMode(map, on) {
@@ -750,7 +830,7 @@ function buildGallery() {
                 <div class="map-wrapper">
                     <div id="${mapId}" class="lmap"></div>
                     <div class="map-badge ${BCLASS[year]}">${year}</div>
-                    <div class="src-badge">${conf.label}</div>
+                    <div class="src-badge" id="src-badge-${mapId}">${conf.label}</div>
                     <div class="crop-badge pending" id="crop-badge-${house.id}-${year}">⏳ crop pending</div>
                     ${isFirst?`<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button><div class="drag-hint" id="hint-${house.id}">drag corners</div>`:''}
                     <div class="map-loader" id="ldr-${mapId}"><div class="spinner"></div></div>
@@ -767,6 +847,7 @@ function buildGallery() {
             YEARS.forEach((year,yIdx) => {
                 const mapId=`lmap-h${house.id}-y${year}`;
                 const map=buildMap(mapId,house,year,yIdx===0);
+                map._divId = mapId;
                 attachSync(map);
                 setTimeout(() => { const ldr=document.getElementById(`ldr-${mapId}`); if(ldr){ldr.style.opacity='0';setTimeout(()=>ldr.remove(),400);} },2000);
             });
@@ -783,9 +864,21 @@ function toggleEdit(houseId) {
     setEditMode(editMap,on);
     const btn=document.getElementById(`editbtn-${houseId}`);
     const hint=document.getElementById(`hint-${houseId}`);
-    btn.textContent=on?'✓ Done':'✎ Edit';
     btn.classList.toggle('active',on);
     hint.style.display=on?'block':'none';
+
+    if(on) {
+        // Entering edit mode
+        btn.textContent='✓ Done';
+    } else {
+        // Exiting edit mode — auto-save if coords changed
+        btn.textContent='✎ Edit';
+        if(house.dirty && dbOnline) {
+            saveToDb(houseId);          // fire-and-forget, UI updates inside
+        } else if(house.dirty && !dbOnline) {
+            showToast(`Coords updated locally — backend offline, can't save to DB`, 'warn');
+        }
+    }
 }
 
 function updateLabelCoords(house) {
@@ -798,15 +891,28 @@ function updateLabelCoords(house) {
 function updateDirtyUI(house) {
     const btn=document.getElementById(`save-btn-${house.id}`);
     const status=document.getElementById(`dbstatus-${house.id}`);
+    // Show manual save button only if dirty AND backend is online (auto-save may have failed)
     if(btn) btn.style.display=(house.dirty&&dbOnline)?'block':'none';
-    if(status) status.innerHTML=house.dbId?(house.dirty?`<span class="status-unsaved">● unsaved changes</span>`:`<span class="status-saved">● saved</span>`):`<span class="status-unsaved">○ not in DB</span>`;
+    if(status) {
+        if(!house.dbId) {
+            status.innerHTML=`<span class="status-unsaved">○ not in DB</span>`;
+        } else if(house.dirty) {
+            status.innerHTML=`<span class="status-unsaved">● unsaved changes</span>`;
+        } else {
+            status.innerHTML=`<span class="status-saved">● saved</span>`;
+        }
+    }
 }
 
 async function saveToDb(houseId) {
     const house=boundaries.find(h=>h.id===houseId);
     if(!house||!dbOnline) return;
+
     const status=document.getElementById(`dbstatus-${houseId}`);
+    const saveBtn=document.getElementById(`save-btn-${houseId}`);
     if(status) status.innerHTML=`<span class="status-saving">↑ saving…</span>`;
+    if(saveBtn) saveBtn.style.display='none';
+
     try {
         const payload={coords:house.coords,label:house.label};
         let res;
@@ -814,11 +920,26 @@ async function saveToDb(houseId) {
             res=await fetch(`${API}/houses/${house.dbId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         } else {
             res=await fetch(`${API}/houses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-            house.dbId=(await res.json()).id;
+            const data=await res.json();
+            house.dbId=data.id;
         }
-        house.dirty=false; updateDirtyUI(house);
-        setTimeout(()=>loadCropInfo(house),8000);
-    } catch { if(status) status.innerHTML=`<span style="color:var(--c22)">✗ failed</span>`; }
+
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        house.dirty=false;
+        updateDirtyUI(house);
+        showToast(`House #${houseId} saved ✓`, 'success');
+        // Clear existing crop cache for this house so polling detects the new ones
+        YEARS.forEach(y => { house.crops[y] = null; });
+        updateCropBadges(house);
+        // Poll until new crops are generated (backend regenerates in background)
+        pollUntilCropsReady(house);
+    } catch(e) {
+        house.dirty=true;   // keep dirty so user can retry
+        updateDirtyUI(house);
+        if(status) status.innerHTML=`<span style="color:var(--c22)">✗ save failed — retry below</span>`;
+        showToast(`Save failed for house #${houseId}: ${e.message}`, 'error');
+    }
 }
 
 async function deleteHouse(houseId) {
@@ -877,6 +998,20 @@ function hideProgress()    { document.getElementById('progressOverlay').classLis
 function showAlert(msg,type) {
     const el=document.getElementById('alertBox'); el.textContent=msg; el.className=type;
     if(type==='success') setTimeout(()=>{el.className='';el.style.display='none';},3500);
+}
+
+// ── Toast ──────────────────────────────────────────
+function showToast(msg, type='success', duration=3500) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity='0';
+        toast.style.transition='opacity .3s';
+        setTimeout(()=>toast.remove(), 300);
+    }, duration);
 }
 
 // ── Reset ─────────────────────────────────────────
