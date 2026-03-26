@@ -6,6 +6,7 @@
     <title>SatView — Satellite Boundary Viewer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -149,7 +150,7 @@ input[type="file"] { display:none; }
 .btn-purple { background:rgba(191,95,255,.1);  border-color:rgba(191,95,255,.35); color:var(--c25); }
 .btn-purple:hover { background:rgba(191,95,255,.22); }
 
-.year-headers { display:grid; grid-template-columns:140px repeat(4,1fr); border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:53px; z-index:199; }
+.year-headers { display:grid; grid-template-columns:140px repeat(3,1fr); border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:53px; z-index:199; }
 .yh-spacer { border-right:1px solid var(--border); }
 .yhcell { padding:11px 14px; text-align:center; border-left:1px solid var(--border); }
 .yhcell-25{border-color:rgba(191,95,255,.25);}.yhcell-24{border-color:rgba(0,229,255,.25);}
@@ -159,7 +160,7 @@ input[type="file"] { display:none; }
 .ysub { font-size:9px; font-family:'Space Mono',monospace; color:var(--muted); letter-spacing:.13em; text-transform:uppercase; }
 .ysrc { font-size:8px; font-family:'Space Mono',monospace; color:var(--muted); margin-top:2px; opacity:.6; }
 .gallery-body { flex:1; }
-.house-row { display:grid; grid-template-columns:140px repeat(4,1fr); border-bottom:1px solid var(--border); animation:fadeUp .35s ease both; }
+.house-row { display:grid; grid-template-columns:140px repeat(3,1fr); border-bottom:1px solid var(--border); animation:fadeUp .35s ease both; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .house-label { display:flex; flex-direction:column; padding:12px 10px; border-right:1px solid var(--border); gap:4px; }
 .hl-num    { font-family:'Space Mono',monospace; font-size:20px; font-weight:700; color:var(--c24); line-height:1; }
@@ -177,36 +178,32 @@ input[type="file"] { display:none; }
 .map-cell-25{border-color:rgba(191,95,255,.12);}.map-cell-24{border-color:rgba(0,229,255,.12);}
 .map-cell-23{border-color:rgba(168,255,62,.12);}.map-cell-22{border-color:rgba(255,61,113,.12);}
 .map-wrapper { width:100%; border-radius:8px; overflow:hidden; position:relative; background:#111; }
-.lmap { width:100%; height:240px; }
+.lmap { width:100%; height:320px; }
 .map-badge { position:absolute; top:7px; left:7px; z-index:500; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; padding:3px 8px; border-radius:4px; pointer-events:none; }
 .badge-25{background:rgba(191,95,255,.2);color:var(--c25);border:1px solid rgba(191,95,255,.45);}
 .badge-24{background:rgba(0,229,255,.18);color:var(--c24);border:1px solid rgba(0,229,255,.4);}
 .badge-23{background:rgba(168,255,62,.18);color:var(--c23);border:1px solid rgba(168,255,62,.4);}
 .badge-22{background:rgba(255,61,113,.18);color:var(--c22);border:1px solid rgba(255,61,113,.4);}
 .src-badge { position:absolute; bottom:6px; right:6px; z-index:500; font-family:'Space Mono',monospace; font-size:8px; padding:2px 6px; border-radius:3px; pointer-events:none; background:rgba(0,0,0,.55); color:rgba(255,255,255,.45); }
-.crop-badge { position:absolute; bottom:6px; left:6px; z-index:500; font-family:'Space Mono',monospace; font-size:8px; padding:2px 6px; border-radius:3px; cursor:pointer; background:rgba(168,255,62,.15); color:var(--c23); border:1px solid rgba(168,255,62,.35); transition:all .2s; }
-.crop-badge:hover { background:rgba(168,255,62,.3); }
-.crop-badge.pending { background:rgba(0,229,255,.1); color:var(--c24); border-color:rgba(0,229,255,.3); cursor:default; }
 .edit-btn { position:absolute; top:7px; right:7px; z-index:600; font-family:'Space Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; background:rgba(0,229,255,.15); color:var(--c24); border:1px solid rgba(0,229,255,.4); transition:all .2s; }
 .edit-btn:hover { background:rgba(0,229,255,.3); }
 .edit-btn.active { background:rgba(168,255,62,.2); color:var(--c23); border-color:rgba(168,255,62,.5); }
-.drag-hint { position:absolute; top:30px; right:7px; z-index:600; font-family:'Space Mono',monospace; font-size:8px; padding:2px 6px; border-radius:3px; pointer-events:none; background:rgba(168,255,62,.12); color:var(--c23); border:1px solid rgba(168,255,62,.3); display:none; }
+.brush-toolbar { position:absolute; top:30px; right:7px; z-index:600; display:none; flex-direction:column; gap:4px; }
+.tool-row { display:flex; gap:3px; align-items:center; }
+.brush-btn { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all .15s; }
+.tool-btn { background:rgba(0,229,255,.1); color:var(--c24); border:1px solid rgba(0,229,255,.3); }
+.tool-btn.active { background:rgba(0,229,255,.35); }
+.brush-btn-add { background:rgba(168,255,62,.1); color:var(--c23); border:1px solid rgba(168,255,62,.35); }
+.brush-btn-add.active { background:rgba(168,255,62,.38); }
+.brush-btn-erase { background:rgba(255,61,113,.1); color:#ff3d71; border:1px solid rgba(255,61,113,.35); }
+.brush-btn-erase.active { background:rgba(255,61,113,.38); }
+.brush-size-btn { background:rgba(255,255,255,.08); color:var(--text); border:1px solid var(--border); padding:3px 7px; }
+.brush-size-btn:hover { background:rgba(255,255,255,.18); }
+.brush-size-label { font-family:'Space Mono',monospace; font-size:8px; color:var(--muted); min-width:22px; text-align:center; }
 .map-loader { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:var(--card); z-index:400; border-radius:8px; transition:opacity .4s; }
 .spinner { width:24px; height:24px; border:2px solid var(--border); border-top-color:var(--c24); border-radius:50%; animation:spin .7s linear infinite; }
 .coord-changed { color:var(--c23) !important; }
 
-/* Crop Modal */
-#cropModal { position:fixed; inset:0; z-index:1000; display:none; background:rgba(0,0,0,.85); align-items:center; justify-content:center; padding:20px; }
-#cropModal.open { display:flex; }
-.modal-box { background:var(--card); border:1px solid var(--border); border-radius:16px; max-width:800px; width:100%; padding:24px; position:relative; max-height:90vh; overflow-y:auto; }
-.modal-title { font-size:14px; font-weight:700; margin-bottom:16px; font-family:'Space Mono',monospace; color:var(--c24); }
-.modal-close { position:absolute; top:14px; right:16px; cursor:pointer; font-size:20px; color:var(--muted); background:none; border:none; }
-.modal-close:hover { color:var(--text); }
-.crops-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
-.crop-item { border-radius:8px; overflow:hidden; border:1px solid var(--border); }
-.crop-item img { width:100%; display:block; }
-.crop-item .crop-meta { padding:8px 10px; background:var(--surface); font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); border-top:1px solid var(--border); }
-.crop-pending { display:flex; align-items:center; justify-content:center; height:180px; color:var(--muted); font-family:'Space Mono',monospace; font-size:11px; flex-direction:column; gap:8px; }
 
 /* DB Status Bar */
 #dbStatusBar { position:fixed; bottom:0; left:0; right:0; z-index:500; padding:6px 22px; font-family:'Space Mono',monospace; font-size:10px; background:var(--surface); border-top:1px solid var(--border); display:none; align-items:center; gap:18px; }
@@ -261,7 +258,7 @@ input[type="file"] { display:none; }
     </div>
     <div class="format-info">
         <span class="tag">▸ CSV FORMAT — 8 values per row (4 corners) + optional label</span>
-        <code>lat1,lon1,lat2,lon2,lat3,lon3,lat4,lon4[,label]
+        <code>polygon_wkt (header row required, WKT format)
 31.5204,74.3587,31.5214,74.3587,31.5214,74.3597,31.5204,74.3597,House A</code>
     </div>
     <div id="alertBox"></div>
@@ -321,18 +318,8 @@ input[type="file"] { display:none; }
         <div class="yhcell yhcell-25"><span class="ynum ynum-25">2025</span><span class="ysub">Current</span><div class="ysrc" id="src-25">—</div></div>
         <div class="yhcell yhcell-24"><span class="ynum ynum-24">2024</span><span class="ysub">1 Yr Ago</span><div class="ysrc" id="src-24">—</div></div>
         <div class="yhcell yhcell-23"><span class="ynum ynum-23">2023</span><span class="ysub">2 Yrs Ago</span><div class="ysrc" id="src-23">—</div></div>
-        <div class="yhcell yhcell-22"><span class="ynum ynum-22">2022</span><span class="ysub">3 Yrs Ago</span><div class="ysrc" id="src-22">—</div></div>
     </div>
     <div class="gallery-body" id="galleryBody"></div>
-</div>
-
-<!-- CROP MODAL -->
-<div id="cropModal">
-    <div class="modal-box">
-        <button class="modal-close" onclick="closeCropModal()">✕</button>
-        <div class="modal-title" id="modalTitle">Satellite Crops</div>
-        <div class="crops-grid" id="cropsGrid"></div>
-    </div>
 </div>
 
 <!-- PROGRESS OVERLAY -->
@@ -352,10 +339,10 @@ input[type="file"] { display:none; }
 <script>
 const API = 'http://localhost:8000/api';
 const WAYBACK_BASE     = 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile';
-const WAYBACK_RELEASES = {2025:{release:13192,label:'2025-12-18'},2024:{release:16453,label:'2024-12-12'},2023:{release:56102,label:'2023-12-07'},2022:{release:57659,label:'2022-12-08'}};
-const YEARS  = [2025,2024,2023,2022];
-const COLORS = {2025:'#bf5fff',2024:'#00e5ff',2023:'#a8ff3e',2022:'#ff3d71'};
-const BCLASS = {2025:'badge-25',2024:'badge-24',2023:'badge-23',2022:'badge-22'};
+const WAYBACK_RELEASES = {2025:{release:13192,label:'2025-12-18'},2024:{release:16453,label:'2024-12-12'},2023:{release:56102,label:'2023-12-07'}};
+const YEARS  = [2025,2024,2023];
+const COLORS = {2025:'#bf5fff',2024:'#00e5ff',2023:'#a8ff3e'};
+const BCLASS = {2025:'badge-25',2024:'badge-24',2023:'badge-23'};
 
 let boundaries   = [];
 let allMaps      = [];
@@ -379,7 +366,7 @@ async function checkDB() {
     bar.classList.add('show');
     document.getElementById('dbDot').className = dbOnline ? 'db-dot ok' : 'db-dot err';
     document.getElementById('dbStatusText').textContent = dbOnline
-        ? 'Backend connected — duplicate checking & crops enabled'
+        ? 'Backend connected — duplicate checking enabled'
         : 'Backend offline — CSV-only mode (no duplicate check)';
 }
 checkDB();
@@ -387,26 +374,17 @@ checkDB();
 // ── Wayback config ────────────────────────────────
 async function fetchWaybackConfig() {
     try {
-        const res = await fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json');
+        const res = await fetch(`${API}/wayback-releases`);
         if (!res.ok) throw 0;
-        const config = await res.json();
+        const data = await res.json();
+        // Convert string keys to int keys
         const byYear = {};
-        for (const [rnum,info] of Object.entries(config)) {
-            const m = (info.itemTitle||'').match(/Wayback (\d{4})-(\d{2}-\d{2})/);
-            if (!m) continue;
-            const year = parseInt(m[1]);
-            if (year < 2022 || year > 2025) continue;
-            const n = parseInt(rnum);
-            if (!byYear[year] || n > byYear[year].release) {
-                const tileUrl = info.itemURL.replace('{level}','{z}').replace('{row}','{y}').replace('{col}','{x}');
-                byYear[year] = {release:n,label:`${m[1]}-${m[2]}`,tileUrl};
-            }
-        }
-        for (const y of YEARS) if (!byYear[y]) byYear[y]={...WAYBACK_RELEASES[y],tileUrl:`${WAYBACK_BASE}/${WAYBACK_RELEASES[y].release}/{z}/{y}/{x}`};
+        for (const [y, v] of Object.entries(data)) byYear[parseInt(y)] = v;
         return byYear;
     } catch {
-        const f={};
-        for (const [y,v] of Object.entries(WAYBACK_RELEASES)) f[y]={...v,tileUrl:`${WAYBACK_BASE}/${v.release}/{z}/{y}/{x}`};
+        const f = {};
+        for (const [y, v] of Object.entries(WAYBACK_RELEASES))
+            f[parseInt(y)] = {...v, tileUrl:`${WAYBACK_BASE}/${v.release}/{z}/{y}/{x}`};
         return f;
     }
 }
@@ -476,7 +454,7 @@ function showDupeScreen(data) {
             const c = row.coords;
             const div = document.createElement('div');
             div.className = 'new-row-item';
-            div.innerHTML = `<span class="nri-label">✓ ${row.label}</span><span class="nri-coords">${c[0][0].toFixed(5)},${c[0][1].toFixed(5)} … ${c[3][0].toFixed(5)},${c[3][1].toFixed(5)}</span>`;
+            div.innerHTML = `<span class="nri-label">✓ ${row.label}</span><span class="nri-coords">${c[0][0].toFixed(5)},${c[0][1].toFixed(5)} … ${c[c.length-1][0].toFixed(5)},${c[c.length-1][1].toFixed(5)} (${c.length} pts)</span>`;
             nrList.appendChild(div);
         });
     } else { nrSection.style.display = 'none'; }
@@ -540,13 +518,13 @@ function buildMiniMaps(conflict, idx) {
         const el = document.getElementById(divId);
         if (!el) return;
         const map = L.map(divId, {zoomControl:false,attributionControl:false,scrollWheelZoom:false,doubleClickZoom:false,dragging:false,keyboard:false,touchZoom:false});
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:21,maxNativeZoom:19}).addTo(map);
         const poly = L.polygon(coords,{color,weight:2,fillColor:color,fillOpacity:.2}).addTo(map);
         coords.forEach(c => L.circleMarker(c,{radius:4,color,fillColor:'#fff',fillOpacity:1,weight:2}).addTo(map));
         map.fitBounds(poly.getBounds(),{padding:[16,16]});
     }
     const db  = conflict.db;
-    mini(`mini-map-db-${idx}`,  [[db.lat1,db.lon1],[db.lat2,db.lon2],[db.lat3,db.lon3],[db.lat4,db.lon4]], '#00e5ff');
+    mini(`mini-map-db-${idx}`,  db.coords, '#00e5ff');
     mini(`mini-map-csv-${idx}`, conflict.csv.coords, '#ff3d71');
 }
 
@@ -598,7 +576,7 @@ async function confirmImport() {
     const resolutions = dupeCheckData.conflicts.map((c, idx) => ({
         action: dupeResolutions[idx], db_id: c.db.id, csv_row: c.csv
     }));
-    showProgress('Saving to database & generating satellite crops…');
+    showProgress('Saving to database…');
     await doConfirmedImport({new_rows: dupeCheckData.new_rows, resolutions});
     hideProgress();
 }
@@ -626,50 +604,14 @@ async function loadFromDatabase() {
         if (!rows.length) { hideProgress(); showAlert('Database is empty.','info'); return; }
         boundaries = rows.map(r => ({
             id:r.id, label:r.label,
-            coords:[[r.lat1,r.lon1],[r.lat2,r.lon2],[r.lat3,r.lon3],[r.lat4,r.lon4]],
-            dbId:r.id, dirty:false, crops:{}
+            coords:r.coords,
+            dbId:r.id, dirty:false
         }));
         await launchGallery();
         hideProgress();
-        boundaries.forEach(h => {
-            loadCropInfo(h).then(() => {
-                // If any year is still missing a crop, keep polling
-                const missing = YEARS.some(y => !h.crops[y]);
-                if (missing) pollUntilCropsReady(h, 10000, 10);
-            });
-        });
     } catch(e) { hideProgress(); showAlert('DB load failed: '+e.message,'error'); }
 }
 
-async function loadCropInfo(house) {
-    if (!dbOnline || !house.dbId) return;
-    try {
-        const crops = await (await fetch(`${API}/houses/${house.dbId}/crops`)).json();
-        crops.forEach(c => {
-            const wasEmpty = !house.crops[c.year];
-            house.crops[c.year] = c;
-            // If this year just got a crop, swap the map layer to the local image
-            if (wasEmpty && c.file_path) {
-                swapMapToCrop(house, c.year, c);
-            }
-        });
-        updateCropBadges(house);
-    } catch {}
-}
-
-// Poll until all 4 years have crops (used after save/regenerate)
-function pollUntilCropsReady(house, intervalMs=8000, maxAttempts=15) {
-    let attempts = 0;
-    const timer = setInterval(async () => {
-        attempts++;
-        await loadCropInfo(house);
-        const allDone = YEARS.every(y => house.crops[y] && house.crops[y].file_path);
-        if (allDone || attempts >= maxAttempts) {
-            clearInterval(timer);
-            if (allDone) showToast(`All crops ready for House #${house.id} ✓`, 'success');
-        }
-    }, intervalMs);
-}
 
 async function loadBoth() {
     if (!dbOnline) { showAlert('Backend offline — CSV only.','info'); document.getElementById('fileInput').click(); return; }
@@ -677,16 +619,30 @@ async function loadBoth() {
     document.getElementById('fileInput').click();
 }
 
+function parseWKT(wkt) {
+    const m = wkt.match(/POLYGON\s*\(\((.+)\)\)/i);
+    if (!m) return null;
+    const pairs = m[1].split(',').map(p => { const parts = p.trim().split(/\s+/); return [parseFloat(parts[1]), parseFloat(parts[0])]; }).filter(p => !isNaN(p[0]));
+    if (pairs.length > 1 && pairs[0][0]===pairs[pairs.length-1][0] && pairs[0][1]===pairs[pairs.length-1][1]) pairs.pop();
+    return pairs.length >= 3 ? pairs : null;
+}
+
 function parseCSVText(text) {
     const houses = [];
     text.trim().split('\n').forEach((line,i) => {
-        line = line.trim();
-        if (!line || line.startsWith('#')) return;
-        const v = line.split(',');
-        const nums = v.slice(0,8).map(x => parseFloat(x.trim()));
-        if (nums.length < 8 || nums.some(isNaN)) return;
-        const label = v[8] ? v[8].trim() : `House ${i+1}`;
-        houses.push({id:null,label,coords:[[nums[0],nums[1]],[nums[2],nums[3]],[nums[4],nums[5]],[nums[6],nums[7]]],dbId:null,dirty:false,crops:{}});
+        line = line.trim().replace(/^"|"$/g,'');
+        if (!line || line.startsWith('#') || line.toLowerCase().includes('polygon_wkt')) return;
+        let coords = null;
+        if (line.toUpperCase().includes('POLYGON')) {
+            coords = parseWKT(line);
+        } else {
+            const v = line.split(',');
+            const nums = v.slice(0,8).map(x => parseFloat(x.trim()));
+            if (nums.length >= 8 && !nums.some(isNaN))
+                coords = [[nums[0],nums[1]],[nums[2],nums[3]],[nums[4],nums[5]],[nums[6],nums[7]]];
+        }
+        if (!coords) return;
+        houses.push({id:null, label:`House ${i+1}`, coords, dbId:null, dirty:false});
     });
     return houses;
 }
@@ -704,93 +660,208 @@ function buildMap(divId, house, year, isEditSource) {
 
     map._houseRef=house; map._isEditSource=isEditSource; map._color=color; map._year=year; map._conf=conf;
 
-    // Use local crop image as base layer if available, else fall back to live Wayback tiles
-    const crop = house.crops && house.crops[year];
-    if (crop && crop.file_path) {
-        _applyLocalCropLayer(map, house, crop);
-    } else {
-        map._usingCrop = false;
-        L.tileLayer(conf.tileUrl||`${WAYBACK_BASE}/${conf.release}/{z}/{y}/{x}`,
-            {maxZoom:21,attribution:`© Esri ${conf.label} (live)`}).addTo(map);
-    }
+    L.tileLayer(`${API}/tiles/${year}/{z}/{y}/{x}`,
+        {maxZoom:21, maxNativeZoom:19, attribution:`© Esri Wayback ${conf.label}`}).addTo(map);
 
     function redraw() {
         if (map._polygon) map.removeLayer(map._polygon);
-        map._polygon = L.polygon(house.coords,{color,weight:2.5,fillColor:color,fillOpacity:.18,interactive:false}).addTo(map);
+        const fillOp = map._editMode ? 0.42 : 0.18;
+        map._polygon = L.polygon(house.coords,{color,weight:2.5,fillColor:color,fillOpacity:fillOp,interactive:false}).addTo(map);
     }
     redraw(); map._redraw=redraw;
     map._corners = house.coords.map((c,ci) => {
-        const m = L.circleMarker(c,{radius:5,color,fillColor:'#fff',fillOpacity:1,weight:2.5}).addTo(map);
+        const m = L.circleMarker(c,{radius:0,opacity:0,fillOpacity:0}).addTo(map);
         m._ci=ci; return m;
     });
     map.fitBounds(L.latLngBounds(house.coords),{padding:[22,22]});
     allMaps.push(map); return map;
 }
 
-// Apply a local crop image as an ImageOverlay base layer
-function _applyLocalCropLayer(map, house, crop) {
-    const imgUrl = `${API.replace('/api','')}/${crop.file_path.replace(/\\/g,'/')}`;
-    const bounds = L.latLngBounds(house.coords);
-    // Remove any existing tile/image layer
-    if (map._baseLayer) { map.removeLayer(map._baseLayer); }
-    map._baseLayer  = L.imageOverlay(imgUrl, bounds, {opacity:1, attribution:'📁 Local crop'}).addTo(map);
-    map._usingCrop  = true;
-    map.fitBounds(bounds, {padding:[22,22]});
-    // Show a local-crop indicator badge
-    const badge = document.getElementById(`src-badge-${map._divId}`);
-    if (badge) { badge.textContent = '📁 local crop'; badge.style.color = 'var(--c23)'; }
-}
 
-// Swap a map's base layer to the local crop image (called when crops finish generating)
-function swapMapToCrop(house, year, crop) {
-    allMaps.forEach(map => {
-        if (map._houseRef === house && map._year === year) {
-            // Remove old tile layer if present
-            if (map._baseLayer) { map.removeLayer(map._baseLayer); }
-            else { map.eachLayer(l => { if (l instanceof L.TileLayer) map.removeLayer(l); }); }
-            _applyLocalCropLayer(map, house, crop);
-        }
-    });
-}
-
+// ── Edit mode ─────────────────────────────────────
 function setEditMode(map, on) {
-    map._editMode=on;
-    on ? map.dragging.enable() : map.dragging.disable();
-    on ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
+    map._editMode = on;
+    map._redraw();
+    if (on) {
+        map._editTool   = map._editTool   || 'point';
+        map._brushMode  = map._brushMode  || 'add';
+        map._brushRadius= map._brushRadius|| 3;
+        activateEditTool(map, map._editTool);
+    } else {
+        deactivateEditTool(map);
+        map.dragging.disable();
+        map.scrollWheelZoom.disable();
+        map.getContainer().style.cursor = '';
+    }
+}
+
+function activateEditTool(map, tool) {
+    deactivateEditTool(map);
+    map._editTool = tool;
+    if (tool === 'point') {
+        map.dragging.enable();
+        map.scrollWheelZoom.enable();
+        map.getContainer().style.cursor = '';
+        setupPointHandles(map);
+    } else {
+        map.dragging.disable();
+        map.scrollWheelZoom.disable();
+        map.getContainer().style.cursor = 'crosshair';
+        setupBrush(map);
+    }
+}
+
+function deactivateEditTool(map) {
+    cleanupBrush(map);
+    cleanupPointHandles(map);
+}
+
+// ── Point-drag tool ───────────────────────────────
+function setupPointHandles(map) {
     const house = map._houseRef;
-    map._corners.forEach((cm,ci) => {
-        map.removeLayer(cm);
-        const c = house.coords[ci];
-        const newM = on
-            ? L.marker(c,{draggable:true,icon:L.divIcon({className:'',html:`<div style="width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid ${map._color};cursor:grab;box-shadow:0 0 6px rgba(0,0,0,.6);"></div>`,iconSize:[14,14],iconAnchor:[7,7]})})
-            : L.circleMarker(c,{radius:5,color:map._color,fillColor:'#fff',fillOpacity:1,weight:2.5});
-        newM._ci=ci; newM.addTo(map);
-        if (on) newM.on('drag', e => {
+    const color = map._color;
+    if (map._corners) map._corners.forEach(cm => { try { map.removeLayer(cm); } catch{} });
+    map._corners = house.coords.map((c, ci) => {
+        const m = L.marker(c, {draggable:true, icon:L.divIcon({className:'', html:`<div style="width:20px;height:20px;border-radius:50%;background:${color};opacity:0.85;cursor:grab;border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 10px rgba(0,0,0,.5);"></div>`, iconSize:[20,20], iconAnchor:[10,10]})});
+        m._ci = ci; m.addTo(map);
+        m.on('drag', e => {
             const ll = e.target.getLatLng();
-            house.coords[ci]=[ll.lat,ll.lng];
+            house.coords[ci] = [ll.lat, ll.lng];
             map._redraw();
-            allMaps.forEach(om => { if(om!==map && om._houseRef===house) om._sync(); });
+            allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
             updateLabelCoords(house);
-            house.dirty=true; updateDirtyUI(house);
+            house.dirty = true; updateDirtyUI(house);
         });
-        map._corners[ci]=newM;
+        return m;
     });
+}
+
+function cleanupPointHandles(map) {
+    if (map._corners) {
+        map._corners.forEach(cm => { try { map.removeLayer(cm); } catch{} });
+        map._corners = map._houseRef.coords.map((c, ci) => {
+            const m = L.circleMarker(c, {radius:0, opacity:0, fillOpacity:0}).addTo(map);
+            m._ci = ci; return m;
+        });
+    }
+}
+
+// ── Brush tool ────────────────────────────────────
+function setupBrush(map) {
+    const container = map.getContainer();
+    const R = () => map._brushRadius || 3;
+    let drawing = false, pts = [], strokeLyr = null, cursorLyr = null;
+    function col() { return map._brushMode === 'add' ? '#a8ff3e' : '#ff3d71'; }
+
+    function onMove(e) {
+        const ll = map.mouseEventToLatLng(e);
+        if (cursorLyr) map.removeLayer(cursorLyr);
+        cursorLyr = L.circle(ll, {radius:R(), color:col(), weight:1.5, fillColor:col(), fillOpacity:.18, interactive:false}).addTo(map);
+        if (!drawing) return;
+        pts.push([ll.lng, ll.lat]);
+        if (strokeLyr) map.removeLayer(strokeLyr);
+        if (pts.length > 1) strokeLyr = L.polyline(pts.map(p=>[p[1],p[0]]), {color:col(), weight:R()*2, opacity:.28, lineCap:'round', lineJoin:'round', interactive:false}).addTo(map);
+    }
+    function onDown(e) {
+        if (e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        drawing = true;
+        const ll = map.mouseEventToLatLng(e);
+        pts = [[ll.lng, ll.lat]];
+    }
+    function onUp() {
+        if (!drawing) return;
+        drawing = false;
+        if (strokeLyr) { map.removeLayer(strokeLyr); strokeLyr = null; }
+        if (pts.length) applyBrush(map, map._houseRef, pts);
+        pts = [];
+    }
+
+    container.addEventListener('mousemove', onMove);
+    container.addEventListener('mousedown', onDown);
+    document.addEventListener('mouseup', onUp);
+    map._brushCleanup = () => {
+        container.removeEventListener('mousemove', onMove);
+        container.removeEventListener('mousedown', onDown);
+        document.removeEventListener('mouseup', onUp);
+        if (cursorLyr) { map.removeLayer(cursorLyr); cursorLyr = null; }
+        if (strokeLyr) { map.removeLayer(strokeLyr); strokeLyr = null; }
+    };
+}
+
+function cleanupBrush(map) {
+    if (map._brushCleanup) { map._brushCleanup(); map._brushCleanup = null; }
+}
+
+function applyBrush(map, house, pts) {
+    try {
+        const existRing = [...house.coords.map(c => [c[1],c[0]]), [house.coords[0][1],house.coords[0][0]]];
+        const existPoly = turf.polygon([existRing]);
+        const R = map._brushRadius || 3;
+        const brushGeo = pts.length === 1
+            ? turf.buffer(turf.point(pts[0]), R, {units:'meters'})
+            : turf.buffer(turf.lineString(pts), R, {units:'meters', steps:4});
+        if (!brushGeo) return;
+        const raw = map._brushMode === 'add'
+            ? turf.union(existPoly, brushGeo)
+            : turf.difference(existPoly, brushGeo);
+        if (!raw) return;
+        const result = turf.simplify(raw, {tolerance:0.000008, highQuality:false});
+        let ring;
+        if (result.geometry.type === 'Polygon') {
+            ring = result.geometry.coordinates[0];
+        } else if (result.geometry.type === 'MultiPolygon') {
+            ring = result.geometry.coordinates.reduce((a,b) => a[0].length >= b[0].length ? a : b)[0];
+        } else return;
+        if (!ring || ring.length < 4) return;
+        house.coords = ring.slice(0,-1).map(c => [c[1],c[0]]);
+        map._redraw();
+        allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
+        updateLabelCoords(house);
+        house.dirty = true; updateDirtyUI(house);
+    } catch(err) { console.warn('Brush error:', err); }
+}
+
+// ── Tool switcher controls ────────────────────────
+function setEditTool(houseId, tool) {
+    const house = boundaries.find(h => h.id === houseId);
+    const editMap = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!editMap) return;
+    document.getElementById(`tool-point-${houseId}`)?.classList.toggle('active', tool === 'point');
+    document.getElementById(`tool-brush-${houseId}`)?.classList.toggle('active', tool === 'brush');
+    const brushControls = document.getElementById(`brush-controls-${houseId}`);
+    if (brushControls) brushControls.style.display = tool === 'brush' ? 'flex' : 'none';
+    activateEditTool(editMap, tool);
+}
+
+function setBrushMode(houseId, mode) {
+    const house = boundaries.find(h => h.id === houseId);
+    const editMap = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!editMap) return;
+    editMap._brushMode = mode;
+    document.getElementById(`brush-add-${houseId}`)?.classList.toggle('active', mode === 'add');
+    document.getElementById(`brush-erase-${houseId}`)?.classList.toggle('active', mode === 'erase');
+    cleanupBrush(editMap); setupBrush(editMap);
+}
+
+function adjustBrushSize(houseId, delta) {
+    const house = boundaries.find(h => h.id === houseId);
+    const editMap = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!editMap) return;
+    editMap._brushRadius = Math.min(30, Math.max(1, (editMap._brushRadius || 3) + delta));
+    const lbl = document.getElementById(`brush-size-${houseId}`);
+    if (lbl) lbl.textContent = `${editMap._brushRadius}m`;
+    cleanupBrush(editMap); setupBrush(editMap);
 }
 
 function attachSync(map) {
-    map._sync = function() {
-        const house=map._houseRef; map._redraw();
-        map._corners.forEach((cm,ci) => {
-            map.removeLayer(cm);
-            const nm=L.circleMarker(house.coords[ci],{radius:5,color:map._color,fillColor:'#fff',fillOpacity:1,weight:2.5}).addTo(map);
-            nm._ci=ci; map._corners[ci]=nm;
-        });
-    };
+    map._sync = function() { map._redraw(); };
 }
 
 // ── Gallery ───────────────────────────────────────
 function calcCenter(coords) {
-    return { lat:(coords.reduce((s,c)=>s+c[0],0)/4).toFixed(6), lon:(coords.reduce((s,c)=>s+c[1],0)/4).toFixed(6) };
+    const n = coords.length;
+    return { lat:(coords.reduce((s,c)=>s+c[0],0)/n).toFixed(6), lon:(coords.reduce((s,c)=>s+c[1],0)/n).toFixed(6) };
 }
 
 function buildGallery() {
@@ -831,8 +902,20 @@ function buildGallery() {
                     <div id="${mapId}" class="lmap"></div>
                     <div class="map-badge ${BCLASS[year]}">${year}</div>
                     <div class="src-badge" id="src-badge-${mapId}">${conf.label}</div>
-                    <div class="crop-badge pending" id="crop-badge-${house.id}-${year}">⏳ crop pending</div>
-                    ${isFirst?`<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button><div class="drag-hint" id="hint-${house.id}">drag corners</div>`:''}
+                    ${isFirst?`<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button>
+                    <div class="brush-toolbar" id="hint-${house.id}">
+                        <div class="tool-row">
+                            <button class="brush-btn tool-btn active" id="tool-point-${house.id}" onclick="setEditTool(${house.id},'point')">◈ Points</button>
+                            <button class="brush-btn tool-btn" id="tool-brush-${house.id}" onclick="setEditTool(${house.id},'brush')">⊕ Brush</button>
+                        </div>
+                        <div class="tool-row" id="brush-controls-${house.id}" style="display:none">
+                            <button class="brush-btn brush-btn-add active" id="brush-add-${house.id}" onclick="setBrushMode(${house.id},'add')">✚</button>
+                            <button class="brush-btn brush-btn-erase" id="brush-erase-${house.id}" onclick="setBrushMode(${house.id},'erase')">✕</button>
+                            <button class="brush-btn brush-size-btn" onclick="adjustBrushSize(${house.id},-1)">−</button>
+                            <span class="brush-size-label" id="brush-size-${house.id}">3m</span>
+                            <button class="brush-btn brush-size-btn" onclick="adjustBrushSize(${house.id},+1)">+</button>
+                        </div>
+                    </div>`:''}
                     <div class="map-loader" id="ldr-${mapId}"><div class="spinner"></div></div>
                 </div>`;
             row.appendChild(cell);
@@ -865,7 +948,7 @@ function toggleEdit(houseId) {
     const btn=document.getElementById(`editbtn-${houseId}`);
     const hint=document.getElementById(`hint-${houseId}`);
     btn.classList.toggle('active',on);
-    hint.style.display=on?'block':'none';
+    hint.style.display=on?'flex':'none';
 
     if(on) {
         // Entering edit mode
@@ -929,11 +1012,6 @@ async function saveToDb(houseId) {
         house.dirty=false;
         updateDirtyUI(house);
         showToast(`House #${houseId} saved ✓`, 'success');
-        // Clear existing crop cache for this house so polling detects the new ones
-        YEARS.forEach(y => { house.crops[y] = null; });
-        updateCropBadges(house);
-        // Poll until new crops are generated (backend regenerates in background)
-        pollUntilCropsReady(house);
     } catch(e) {
         house.dirty=true;   // keep dirty so user can retry
         updateDirtyUI(house);
@@ -952,41 +1030,12 @@ async function deleteHouse(houseId) {
     document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
 }
 
-// ── Crops ─────────────────────────────────────────
-function updateCropBadges(house) {
-    YEARS.forEach(year => {
-        const el=document.getElementById(`crop-badge-${house.id}-${year}`); if(!el) return;
-        const crop=house.crops[year];
-        if(crop&&crop.file_path) { el.className='crop-badge'; el.textContent='🖼 view crop'; el.onclick=()=>showCropModal(house); }
-        else { el.className='crop-badge pending'; el.textContent='⏳ crop pending'; el.onclick=null; }
-    });
-}
-
-function showCropModal(house) {
-    const modal=document.getElementById('cropModal');
-    document.getElementById('modalTitle').textContent=`#${house.id} — ${house.label} — Satellite Crops`;
-    const grid=document.getElementById('cropsGrid'); grid.innerHTML='';
-    YEARS.forEach(year => {
-        const crop=house.crops[year];
-        const div=document.createElement('div'); div.className='crop-item';
-        if(crop&&crop.file_path) {
-            const imgUrl=`http://localhost:8000/${crop.file_path.replace(/\\/g,'/')}`;
-            div.innerHTML=`<img src="${imgUrl}" alt="${year}" onerror="this.parentElement.innerHTML='<div class=\\'crop-pending\\'>Image not found</div>'"><div class="map-badge ${BCLASS[year]}" style="position:relative;top:0;left:0;margin:6px 0 0 6px;display:inline-block;">${year}</div><div class="crop-meta">📁 ${crop.file_path}<br>${crop.width}×${crop.height}px · ${(crop.file_size/1024).toFixed(1)} KB</div>`;
-        } else {
-            div.innerHTML=`<div class="crop-pending"><div class="spinner"></div><div>Generating ${year}…</div></div><div class="map-badge ${BCLASS[year]}" style="position:relative;top:0;left:0;margin:6px 0 0 6px;display:inline-block;">${year}</div>`;
-        }
-        grid.appendChild(div);
-    });
-    modal.classList.add('open');
-}
-function closeCropModal() { document.getElementById('cropModal').classList.remove('open'); }
-document.getElementById('cropModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeCropModal(); });
 
 // ── Export ────────────────────────────────────────
 function exportCSV() {
     if(dbOnline) { window.open(`${API}/export/csv`,'_blank'); return; }
-    const rows=boundaries.map(h=>h.coords.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`).join(',')+`,${h.label||''}`);
-    const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+    const rows=boundaries.map(h=>{const pts=[...h.coords,h.coords[0]];const inner=pts.map(c=>`${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ');return `"POLYGON ((${inner}))"`;});
+    const blob=new Blob(['polygon_wkt\n'+rows.join('\n')],{type:'text/csv'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='satview_export.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 
