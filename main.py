@@ -3,7 +3,7 @@ SatView Backend — FastAPI + SQLite
 Run: uvicorn main:app --reload --port 8000
 """
 
-import io, math, sqlite3, json, re, requests
+import io, csv as csv_module, math, sqlite3, json, re, requests
 from pathlib import Path
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -21,6 +21,14 @@ STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
 
 YEARS = [2025, 2024, 2023]
+
+EXTRA_FIELDS = [
+    'point_id', 'cluster_id', 'plot_index', 'sam_status', 'sam_score', 'sam_area_m2',
+    'sam_mask_wkt',
+    'height_m_2023', 'height_class_2023',
+    'height_m_2024', 'height_class_2024',
+    'height_m_2025', 'height_class_2025',
+]
 WAYBACK_BASE = "https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile"
 WAYBACK_RELEASES_FALLBACK = {
     2025: 13192,
@@ -80,6 +88,7 @@ def init_db():
                 updated_at  TEXT DEFAULT (datetime('now'))
             );
             """)
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(houses)").fetchall()]
         elif 'coords_json' not in cols and 'lat1' in cols:
             # Migrate from old 4-column schema
             conn.execute("ALTER TABLE houses ADD COLUMN coords_json TEXT")
@@ -96,6 +105,17 @@ def init_db():
                     (json.dumps(coords), row[0])
                 )
             print(f"✓ Migrated {len(rows)} rows to coords_json schema")
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(houses)").fetchall()]
+        # Add any missing extra columns
+        col_types = {'point_id':'TEXT','cluster_id':'TEXT','plot_index':'INTEGER',
+                     'sam_status':'TEXT','sam_score':'REAL','sam_area_m2':'REAL',
+                     'sam_mask_wkt':'TEXT',
+                     'height_m_2023':'REAL','height_class_2023':'TEXT',
+                     'height_m_2024':'REAL','height_class_2024':'TEXT',
+                     'height_m_2025':'REAL','height_class_2025':'TEXT'}
+        for col, typ in col_types.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE houses ADD COLUMN {col} {typ}")
     print("✓ Database initialised:", DB_PATH)
 
 # ── WKT helpers ───────────────────────────────────────────────────────────────
@@ -150,6 +170,8 @@ class HouseUpdate(BaseModel):
 def row_to_dict(r) -> dict:
     d = dict(r)
     d['coords'] = json.loads(d.get('coords_json') or '[]')
+    for f in EXTRA_FIELDS:
+        d.setdefault(f, None)
     return d
 
 def polygon_centroid(coords: list) -> tuple:
@@ -251,55 +273,104 @@ def center_dist_m(coords_a: list, db_row: dict) -> float:
     return math.sqrt(dlat**2 + dlon**2)
 
 # ── CSV Pre-check ─────────────────────────────────────────────────────────────
+def _safe_float(v):
+    try: return float(v) if v and str(v).strip() else None
+    except: return None
+
+def _safe_int(v):
+    try: return int(v) if v and str(v).strip() else None
+    except: return None
+
+def _parse_csv_rows(content: str):
+    """Parse CSV content. Returns (list_of_csv_entries, list_of_error_strings)."""
+    new_rows, parse_errs = [], []
+    reader = csv_module.DictReader(io.StringIO(content))
+    fieldnames = [f.strip().lower() for f in (reader.fieldnames or [])]
+
+    is_new_format = 'polygon_wkt' in fieldnames and (
+        'point_id' in fieldnames or 'height_m_2023' in fieldnames
+    )
+
+    if is_new_format:
+        # Re-read with normalised header
+        reader = csv_module.DictReader(
+            io.StringIO(content),
+            fieldnames=[f.strip() for f in (reader.fieldnames or [])],
+            restkey='__extra__'
+        )
+        next(reader)   # skip original header row
+        for i, row_dict in enumerate(reader):
+            wkt = row_dict.get('polygon_wkt', '').strip().strip('"')
+            try:
+                coords = parse_wkt_polygon(wkt)
+            except Exception as e:
+                parse_errs.append(f"Row {i+1}: {e}")
+                continue
+            point_id  = row_dict.get('point_id', '').strip()
+            plot_index = row_dict.get('plot_index', '').strip()
+            label = f"{point_id} #{plot_index}" if point_id else f"House {i+1}"
+            extra = {
+                'point_id':         point_id,
+                'cluster_id':       row_dict.get('cluster_id', '').strip(),
+                'plot_index':       _safe_int(plot_index),
+                'sam_status':       row_dict.get('sam_status', '').strip(),
+                'sam_score':        _safe_float(row_dict.get('sam_score')),
+                'sam_area_m2':      _safe_float(row_dict.get('sam_area_m2')),
+                'sam_mask_wkt':     row_dict.get('sam_mask_wkt', '').strip(),
+                'height_m_2023':    _safe_float(row_dict.get('height_m_2023')),
+                'height_class_2023':row_dict.get('height_class_2023', '').strip(),
+                'height_m_2024':    _safe_float(row_dict.get('height_m_2024')),
+                'height_class_2024':row_dict.get('height_class_2024', '').strip(),
+                'height_m_2025':    _safe_float(row_dict.get('height_m_2025')),
+                'height_class_2025':row_dict.get('height_class_2025', '').strip(),
+            }
+            new_rows.append({"row_index": i, "label": label, "coords": coords, **extra})
+    else:
+        # Old format: plain WKT rows or lat/lon rows
+        lines = [l.strip() for l in content.strip().splitlines()
+                 if l.strip() and not l.startswith("#")]
+        if lines and 'polygon_wkt' in lines[0].lower():
+            lines = lines[1:]
+        for i, line in enumerate(lines):
+            raw = line.strip().strip('"')
+            try:
+                if 'POLYGON' in raw.upper():
+                    coords = parse_wkt_polygon(raw)
+                else:
+                    vals = [v.strip() for v in raw.split(",")]
+                    if len(vals) < 8:
+                        raise ValueError(f"need 8 values, got {len(vals)}")
+                    nums = [float(v) for v in vals[:8]]
+                    coords = [[nums[0],nums[1]],[nums[2],nums[3]],
+                              [nums[4],nums[5]],[nums[6],nums[7]]]
+            except Exception as e:
+                parse_errs.append(f"Row {i+1}: {e}")
+                continue
+            new_rows.append({"row_index": i, "label": f"House {i+1}", "coords": coords})
+
+    return new_rows, parse_errs
+
 @app.post("/api/import/check")
 async def check_csv(file: UploadFile = File(...)):
     content = (await file.read()).decode("utf-8")
-    lines   = [l.strip() for l in content.strip().splitlines()
-               if l.strip() and not l.startswith("#")]
-
-    # Skip header row
-    if lines and 'polygon_wkt' in lines[0].lower():
-        lines = lines[1:]
+    parsed_rows, parse_errs = _parse_csv_rows(content)
 
     with get_db() as conn:
         db_rows = conn.execute("SELECT * FROM houses ORDER BY id").fetchall()
     db_rows = [dict(r) for r in db_rows]
 
-    new_rows   = []
-    conflicts  = []
-    parse_errs = []
-
-    for i, line in enumerate(lines):
-        raw = line.strip().strip('"')
-        try:
-            if 'POLYGON' in raw.upper():
-                coords = parse_wkt_polygon(raw)
-            else:
-                # Fallback: old lat1,lon1,lat2,lon2,lat3,lon3,lat4,lon4[,label] format
-                vals = [v.strip() for v in raw.split(",")]
-                if len(vals) < 8:
-                    raise ValueError(f"need 8 values, got {len(vals)}")
-                nums = [float(v) for v in vals[:8]]
-                coords = [
-                    [nums[0], nums[1]], [nums[2], nums[3]],
-                    [nums[4], nums[5]], [nums[6], nums[7]]
-                ]
-        except Exception as e:
-            parse_errs.append(f"Row {i+1}: {e}")
-            continue
-
-        label = f"House {i+1}"
-        csv_entry = {"row_index": i, "label": label, "coords": coords, "raw": line}
-
+    new_rows, conflicts = [], []
+    for entry in parsed_rows:
+        coords = entry["coords"]
         match = next((r for r in db_rows if coords_match(coords, r)), None)
         if match:
             conflicts.append({
-                "csv":    csv_entry,
+                "csv":    entry,
                 "db":     {**dict(match), "coords": json.loads(match.get('coords_json') or '[]')},
                 "dist_m": round(center_dist_m(coords, match), 2)
             })
         else:
-            new_rows.append(csv_entry)
+            new_rows.append(entry)
 
     return {
         "new_count":      len(new_rows),
@@ -319,45 +390,48 @@ class ConfirmedImport(BaseModel):
     new_rows:    list[dict]
     resolutions: list[ConflictResolution]
 
+def _insert_house(label: str, coords: list, extra: dict = None) -> int:
+    extra = extra or {}
+    cols = ['label', 'coords_json'] + EXTRA_FIELDS
+    vals = [label, json.dumps(coords)] + [extra.get(f) for f in EXTRA_FIELDS]
+    col_str      = ', '.join(cols)
+    placeholders = ', '.join('?' * len(vals))
+    with get_db() as conn:
+        cur = conn.execute(f"INSERT INTO houses ({col_str}) VALUES ({placeholders})", vals)
+        return cur.lastrowid
+
+def _update_house_from_csv(db_id: int, csv_row: dict):
+    coords = csv_row["coords"]
+    label  = csv_row.get("label")
+    set_parts = ["label=?", "coords_json=?", "updated_at=datetime('now')"]
+    vals = [label, json.dumps(coords)]
+    for f in EXTRA_FIELDS:
+        if f in csv_row:
+            set_parts.append(f"{f}=?")
+            vals.append(csv_row[f])
+    vals.append(db_id)
+    with get_db() as conn:
+        conn.execute(f"UPDATE houses SET {', '.join(set_parts)} WHERE id=?", vals)
+
 @app.post("/api/import/confirmed")
 def confirmed_import(body: ConfirmedImport):
     inserted = []
     updated  = []
 
     for row in body.new_rows:
-        coords = row["coords"]
-        label  = row.get("label", "House")
-        with get_db() as conn:
-            cur = conn.execute(
-                "INSERT INTO houses (label, coords_json) VALUES (?, ?)",
-                (label, json.dumps(coords))
-            )
-            hid = cur.lastrowid
+        hid = _insert_house(row.get("label", "House"), row["coords"], row)
         inserted.append(hid)
 
     for res in body.resolutions:
         if res.action == "keep_db":
             pass
-
         elif res.action == "keep_csv":
-            coords = res.csv_row["coords"]
-            label  = res.csv_row.get("label")
-            with get_db() as conn:
-                conn.execute(
-                    "UPDATE houses SET label=?, coords_json=?, updated_at=datetime('now') WHERE id=?",
-                    (label, json.dumps(coords), res.db_id)
-                )
+            _update_house_from_csv(res.db_id, res.csv_row)
             updated.append(res.db_id)
-
         elif res.action == "keep_both":
-            coords = res.csv_row["coords"]
-            label  = res.csv_row.get("label", "House (copy)")
-            with get_db() as conn:
-                cur = conn.execute(
-                    "INSERT INTO houses (label, coords_json) VALUES (?, ?)",
-                    (label + " (copy)", json.dumps(coords))
-                )
-                hid = cur.lastrowid
+            csv_row = dict(res.csv_row)
+            csv_row["label"] = csv_row.get("label", "House") + " (copy)"
+            hid = _insert_house(csv_row["label"], csv_row["coords"], csv_row)
             inserted.append(hid)
 
     return {

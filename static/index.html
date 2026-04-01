@@ -226,6 +226,16 @@ input[type="file"] { display:none; }
 .toast.error   { background:rgba(255,61,113,.12); border-color:rgba(255,61,113,.4); color:var(--c22); }
 .toast.warn    { background:rgba(0,229,255,.10);  border-color:rgba(0,229,255,.35); color:var(--c24); }
 @keyframes toastIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── Height strip ── */
+.height-strip { padding:5px 8px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border); background:rgba(255,255,255,.02); }
+.hs-m { font-family:'Space Mono',monospace; font-size:11px; font-weight:700; }
+.hs-class { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); }
+.hs-25 .hs-m { color:var(--c25); }
+.hs-24 .hs-m { color:var(--c24); }
+.hs-23 .hs-m { color:var(--c23); }
+.hl-pid  { font-family:'Space Mono',monospace; font-size:10px; color:var(--c24); margin-top:2px; }
+.hl-meta { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-top:1px; }
 </style>
 </head>
 <body>
@@ -257,9 +267,10 @@ input[type="file"] { display:none; }
         </div>
     </div>
     <div class="format-info">
-        <span class="tag">▸ CSV FORMAT — 8 values per row (4 corners) + optional label</span>
-        <code>polygon_wkt (header row required, WKT format)
-31.5204,74.3587,31.5214,74.3587,31.5214,74.3597,31.5204,74.3597,House A</code>
+        <span class="tag">▸ CSV FORMAT — new multi-column format with height data supported</span>
+        <code>point_id, cluster_id, plot_index, polygon_wkt, …
+height_m_2023, height_class_2023, height_m_2024, height_class_2024, height_m_2025, height_class_2025
+— or legacy: polygon_wkt (single column)</code>
     </div>
     <div id="alertBox"></div>
     <input type="file" id="fileInput" accept=".csv,.txt">
@@ -605,7 +616,18 @@ async function loadFromDatabase() {
         boundaries = rows.map(r => ({
             id:r.id, label:r.label,
             coords:r.coords,
-            dbId:r.id, dirty:false
+            dbId:r.id, dirty:false,
+            point_id:    r.point_id    || '',
+            cluster_id:  r.cluster_id  || '',
+            plot_index:  r.plot_index  ?? null,
+            sam_area_m2: r.sam_area_m2 ?? null,
+            sam_mask_wkt: r.sam_mask_wkt || '',
+            mask_coords: r.sam_mask_wkt ? parseWKT(r.sam_mask_wkt) : null,
+            heights: {
+                2025: { m: r.height_m_2025, cls: r.height_class_2025 },
+                2024: { m: r.height_m_2024, cls: r.height_class_2024 },
+                2023: { m: r.height_m_2023, cls: r.height_class_2023 },
+            }
         }));
         await launchGallery();
         hideProgress();
@@ -627,23 +649,72 @@ function parseWKT(wkt) {
     return pairs.length >= 3 ? pairs : null;
 }
 
+function parseCSVRow(line) {
+    const result = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { result.push(cur); cur = ''; }
+        else { cur += ch; }
+    }
+    result.push(cur);
+    return result;
+}
+
 function parseCSVText(text) {
     const houses = [];
-    text.trim().split('\n').forEach((line,i) => {
-        line = line.trim().replace(/^"|"$/g,'');
-        if (!line || line.startsWith('#') || line.toLowerCase().includes('polygon_wkt')) return;
-        let coords = null;
-        if (line.toUpperCase().includes('POLYGON')) {
-            coords = parseWKT(line);
-        } else {
-            const v = line.split(',');
-            const nums = v.slice(0,8).map(x => parseFloat(x.trim()));
-            if (nums.length >= 8 && !nums.some(isNaN))
-                coords = [[nums[0],nums[1]],[nums[2],nums[3]],[nums[4],nums[5]],[nums[6],nums[7]]];
-        }
-        if (!coords) return;
-        houses.push({id:null, label:`House ${i+1}`, coords, dbId:null, dirty:false});
-    });
+    const lines = text.trim().split('\n').filter(l => l.trim() && !l.startsWith('#'));
+    if (!lines.length) return houses;
+
+    const headerLow = lines[0].toLowerCase();
+    const isNewFormat = headerLow.includes('point_id') && headerLow.includes('polygon_wkt');
+
+    if (isNewFormat) {
+        const cols = parseCSVRow(lines[0]).map(c => c.trim().toLowerCase());
+        const ci = (name) => cols.indexOf(name);
+        const getStr = (vals, name) => { const idx = ci(name); return idx >= 0 ? (vals[idx]||'').trim() : ''; };
+        const getNum = (vals, name) => { const v = getStr(vals, name); return v ? parseFloat(v) : null; };
+        lines.slice(1).forEach((line, i) => {
+            const vals = parseCSVRow(line);
+            const wkt = getStr(vals, 'polygon_wkt');
+            const coords = parseWKT(wkt);
+            if (!coords) return;
+            const pointId = getStr(vals, 'point_id');
+            const plotIdx = getStr(vals, 'plot_index');
+            const label = pointId ? `${pointId} #${plotIdx}` : `House ${i+1}`;
+            const maskWkt = getStr(vals, 'sam_mask_wkt');
+            houses.push({
+                id: null, label, coords, dbId: null, dirty: false,
+                point_id:    pointId,
+                cluster_id:  getStr(vals, 'cluster_id'),
+                plot_index:  plotIdx !== '' ? parseInt(plotIdx) : null,
+                sam_area_m2: getNum(vals, 'sam_area_m2'),
+                sam_mask_wkt: maskWkt,
+                mask_coords: maskWkt ? parseWKT(maskWkt) : null,
+                heights: {
+                    2025: { m: getNum(vals, 'height_m_2025'), cls: getStr(vals, 'height_class_2025') },
+                    2024: { m: getNum(vals, 'height_m_2024'), cls: getStr(vals, 'height_class_2024') },
+                    2023: { m: getNum(vals, 'height_m_2023'), cls: getStr(vals, 'height_class_2023') },
+                }
+            });
+        });
+    } else {
+        lines.forEach((line, i) => {
+            line = line.trim().replace(/^"|"$/g,'');
+            if (!line || line.toLowerCase().includes('polygon_wkt')) return;
+            let coords = null;
+            if (line.toUpperCase().includes('POLYGON')) {
+                coords = parseWKT(line);
+            } else {
+                const v = line.split(',');
+                const nums = v.slice(0,8).map(x => parseFloat(x.trim()));
+                if (nums.length >= 8 && !nums.some(isNaN))
+                    coords = [[nums[0],nums[1]],[nums[2],nums[3]],[nums[4],nums[5]],[nums[6],nums[7]]];
+            }
+            if (!coords) return;
+            houses.push({id:null, label:`House ${i+1}`, coords, dbId:null, dirty:false});
+        });
+    }
     return houses;
 }
 
@@ -664,9 +735,25 @@ function buildMap(divId, house, year, isEditSource) {
         {maxZoom:21, maxNativeZoom:19, attribution:`© Esri Wayback ${conf.label}`}).addTo(map);
 
     function redraw() {
-        if (map._polygon) map.removeLayer(map._polygon);
-        const fillOp = map._editMode ? 0.42 : 0.18;
-        map._polygon = L.polygon(house.coords,{color,weight:2.5,fillColor:color,fillOpacity:fillOp,interactive:false}).addTo(map);
+        if (map._polygon)  map.removeLayer(map._polygon);
+        if (map._maskPoly) map.removeLayer(map._maskPoly);
+        const hasMask = house.mask_coords && house.mask_coords.length >= 3;
+        if (hasMask) {
+            // Grid cell boundary — thin dashed outline only
+            map._polygon = L.polygon(house.coords, {
+                color, weight:1.5, fillOpacity:0, dashArray:'6,4', interactive:false
+            }).addTo(map);
+            // SAM mask — solid building footprint
+            const fillOp = map._editMode ? 0.6 : 0.38;
+            map._maskPoly = L.polygon(house.mask_coords, {
+                color, weight:2, fillColor:color, fillOpacity:fillOp, interactive:false
+            }).addTo(map);
+        } else {
+            const fillOp = map._editMode ? 0.42 : 0.18;
+            map._polygon = L.polygon(house.coords, {
+                color, weight:2.5, fillColor:color, fillOpacity:fillOp, interactive:false
+            }).addTo(map);
+        }
     }
     redraw(); map._redraw=redraw;
     map._corners = house.coords.map((c,ci) => {
@@ -877,11 +964,15 @@ function buildGallery() {
         row.className='house-row'; row.id=`row-${house.id}`;
         row.style.animationDelay=`${hIdx*.04}s`;
         const dbStatus=house.dbId?`<span class="status-saved">● saved</span>`:`<span class="status-unsaved">○ not in DB</span>`;
+        const pidLine = house.point_id ? `<div class="hl-pid">${house.point_id}</div>` : '';
+        const metaLine = house.sam_area_m2 != null ? `<div class="hl-meta">${house.sam_area_m2.toFixed(1)} m²</div>` : '';
         const label=document.createElement('div');
         label.className='house-label';
         label.innerHTML=`
             <div class="hl-num">#${String(house.id).padStart(2,'0')}</div>
+            ${pidLine}
             <div class="hl-name">${house.label||''}</div>
+            ${metaLine}
             <div class="hl-coords" id="coords-${house.id}">${center.lat}<br>${center.lon}</div>
             <div class="hl-actions">
                 <div class="hl-btn hl-btn-save" id="save-btn-${house.id}" onclick="saveToDb(${house.id})">💾 Save to DB</div>
@@ -895,6 +986,10 @@ function buildGallery() {
             const suffix=String(year).slice(-2);
             const conf=waybackConf[year];
             const isFirst=yIdx===0;
+            const hData = house.heights && house.heights[year];
+            const heightStrip = (hData && hData.m != null)
+                ? `<div class="height-strip hs-${suffix}"><span class="hs-m">${hData.m}m</span><span class="hs-class">${hData.cls||''}</span></div>`
+                : '';
             const cell=document.createElement('div');
             cell.className=`map-cell map-cell-${suffix}`;
             cell.innerHTML=`
@@ -917,7 +1012,8 @@ function buildGallery() {
                         </div>
                     </div>`:''}
                     <div class="map-loader" id="ldr-${mapId}"><div class="spinner"></div></div>
-                </div>`;
+                </div>
+                ${heightStrip}`;
             row.appendChild(cell);
         });
         body.appendChild(row);
