@@ -112,7 +112,8 @@ def init_db():
                      'sam_mask_wkt':'TEXT',
                      'height_m_2023':'REAL','height_class_2023':'TEXT',
                      'height_m_2024':'REAL','height_class_2024':'TEXT',
-                     'height_m_2025':'REAL','height_class_2025':'TEXT'}
+                     'height_m_2025':'REAL','height_class_2025':'TEXT',
+                     'contracted_2023':'TEXT','contracted_2024':'TEXT','contracted_2025':'TEXT'}
         for col, typ in col_types.items():
             if col not in cols:
                 conn.execute(f"ALTER TABLE houses ADD COLUMN {col} {typ}")
@@ -252,6 +253,30 @@ def delete_house(house_id: int):
     with get_db() as conn:
         conn.execute("DELETE FROM houses WHERE id=?", (house_id,))
     return {"message": "Deleted"}
+
+EDITABLE_META = {
+    'contracted_2023', 'contracted_2024', 'contracted_2025',
+    'height_class_2023', 'height_class_2024', 'height_class_2025',
+    'sam_area_m2',
+}
+
+class MetaUpdate(BaseModel):
+    field: str
+    value: Optional[str] = None
+
+@app.patch("/api/houses/{house_id}/meta")
+def update_meta(house_id: int, body: MetaUpdate):
+    if body.field not in EDITABLE_META:
+        raise HTTPException(400, f"Field '{body.field}' is not editable via this endpoint")
+    with get_db() as conn:
+        existing = conn.execute("SELECT id FROM houses WHERE id=?", (house_id,)).fetchone()
+        if not existing:
+            raise HTTPException(404, "House not found")
+        conn.execute(
+            f"UPDATE houses SET {body.field}=?, updated_at=datetime('now') WHERE id=?",
+            (body.value, house_id)
+        )
+    return {"ok": True}
 
 # ── Duplicate helpers ─────────────────────────────────────────────────────────
 COORD_TOLERANCE = 0.0001   # ~11 metres

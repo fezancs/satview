@@ -227,13 +227,43 @@ input[type="file"] { display:none; }
 .toast.warn    { background:rgba(0,229,255,.10);  border-color:rgba(0,229,255,.35); color:var(--c24); }
 @keyframes toastIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
-/* ── Height strip ── */
-.height-strip { padding:5px 8px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border); background:rgba(255,255,255,.02); }
-.hs-m { font-family:'Space Mono',monospace; font-size:11px; font-weight:700; }
-.hs-class { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); }
-.hs-25 .hs-m { color:var(--c25); }
-.hs-24 .hs-m { color:var(--c24); }
-.hs-23 .hs-m { color:var(--c23); }
+/* ── Year info panel (below each map) ── */
+.year-info { border-top:1px solid var(--border); background:rgba(255,255,255,.02); }
+.height-strip { padding:5px 8px; display:flex; align-items:center; gap:8px; }
+.area-input {
+    font-family:'Space Mono',monospace; font-size:9px; color:var(--muted);
+    width:72px; text-align:right; padding:2px 4px; border-radius:4px;
+    border:1px solid transparent; background:transparent; outline:none;
+    margin-left:auto; transition:border-color .2s, color .2s;
+}
+.area-input:hover { border-color:var(--border); }
+.area-input:focus { border-color:var(--c24); color:var(--text); }
+/* Height class text input */
+.hcls-input {
+    font-family:'Space Mono',monospace; font-size:9px; font-weight:700;
+    padding:3px 8px; border-radius:4px; border:1px solid var(--border);
+    background:transparent; color:var(--text); outline:none;
+    width:100%; min-width:0; transition:border-color .2s;
+}
+.hcls-input:focus { border-color:var(--c24); }
+.hcls-input::placeholder { color:var(--muted); font-weight:400; }
+.hs-25 .hcls-input:focus { border-color:var(--c25); color:var(--c25); }
+.hs-24 .hcls-input:focus { border-color:var(--c24); color:var(--c24); }
+.hs-23 .hcls-input:focus { border-color:var(--c23); color:var(--c23); }
+/* Contracted tag */
+.contracted-row { padding:4px 8px 6px; border-top:1px solid var(--border); }
+.contracted-tag {
+    font-family:'Space Mono',monospace; font-size:9px; font-weight:700;
+    letter-spacing:.08em; text-transform:uppercase;
+    padding:3px 10px; border-radius:4px; cursor:pointer;
+    border:1px solid; display:inline-block; transition:all .2s; user-select:none;
+}
+.ctag-contracted    { color:#a8ff3e; border-color:rgba(168,255,62,.4); background:rgba(168,255,62,.1); }
+.ctag-contracted:hover { background:rgba(168,255,62,.22); }
+.ctag-non-contracted { color:#ff3d71; border-color:rgba(255,61,113,.4); background:rgba(255,61,113,.1); }
+.ctag-non-contracted:hover { background:rgba(255,61,113,.22); }
+.ctag-unset         { color:var(--muted); border-color:var(--border); background:transparent; }
+.ctag-unset:hover   { border-color:var(--muted); color:var(--text); }
 .hl-pid  { font-family:'Space Mono',monospace; font-size:10px; color:var(--c24); margin-top:2px; }
 .hl-meta { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-top:1px; }
 </style>
@@ -623,6 +653,9 @@ async function loadFromDatabase() {
             sam_area_m2: r.sam_area_m2 ?? null,
             sam_mask_wkt: r.sam_mask_wkt || '',
             mask_coords: r.sam_mask_wkt ? parseWKT(r.sam_mask_wkt) : null,
+            contracted_2023: r.contracted_2023 || null,
+            contracted_2024: r.contracted_2024 || null,
+            contracted_2025: r.contracted_2025 || null,
             heights: {
                 2025: { m: r.height_m_2025, cls: r.height_class_2025 },
                 2024: { m: r.height_m_2024, cls: r.height_class_2024 },
@@ -691,6 +724,9 @@ function parseCSVText(text) {
                 sam_area_m2: getNum(vals, 'sam_area_m2'),
                 sam_mask_wkt: maskWkt,
                 mask_coords: maskWkt ? parseWKT(maskWkt) : null,
+                contracted_2023: null,
+                contracted_2024: null,
+                contracted_2025: null,
                 heights: {
                     2025: { m: getNum(vals, 'height_m_2025'), cls: getStr(vals, 'height_class_2025') },
                     2024: { m: getNum(vals, 'height_m_2024'), cls: getStr(vals, 'height_class_2024') },
@@ -986,10 +1022,20 @@ function buildGallery() {
             const suffix=String(year).slice(-2);
             const conf=waybackConf[year];
             const isFirst=yIdx===0;
-            const hData = house.heights && house.heights[year];
-            const heightStrip = (hData && hData.m != null)
-                ? `<div class="height-strip hs-${suffix}"><span class="hs-m">${hData.m}m</span><span class="hs-class">${hData.cls||''}</span></div>`
-                : '';
+            const hData   = house.heights && house.heights[year];
+            const cVal    = house[`contracted_${year}`];
+            const cCls    = cVal === 'contracted' ? 'ctag-contracted' : cVal === 'non_contracted' ? 'ctag-non-contracted' : 'ctag-unset';
+            const cTxt    = cVal === 'contracted' ? '● Contracted' : cVal === 'non_contracted' ? '○ Non-Contracted' : '— Set Status';
+            const areaVal = house.sam_area_m2 != null ? house.sam_area_m2.toFixed(1) : '';
+            const areaStr = `<input class="area-input" id="area-${house.id}-${year}" value="${areaVal}" placeholder="m²" onblur="saveArea(${house.id},this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+            const hcls    = hData && hData.cls;
+            const hclsTag = `<input class="hcls-input" id="hcls-${house.id}-${year}" value="${hcls||''}" placeholder="height class" onblur="saveHeightClass(${house.id},${year},this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+            const heightStrip = `<div class="year-info">
+                <div class="height-strip hs-${suffix}">${hclsTag}${areaStr}</div>
+                <div class="contracted-row">
+                    <span class="contracted-tag ${cCls}" id="ctag-${house.id}-${year}" onclick="toggleContracted(${house.id},${year})">${cTxt}</span>
+                </div>
+            </div>`;
             const cell=document.createElement('div');
             cell.className=`map-cell map-cell-${suffix}`;
             cell.innerHTML=`
@@ -1126,6 +1172,90 @@ async function deleteHouse(houseId) {
     document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
 }
 
+
+// ── Area field ────────────────────────────────────
+async function saveArea(houseId, value) {
+    const house = boundaries.find(h => h.id === houseId);
+    if (!house) return;
+    const parsed = value.trim() === '' ? null : parseFloat(value);
+    if (parsed === house.sam_area_m2 || (parsed == null && house.sam_area_m2 == null)) return;
+    house.sam_area_m2 = parsed;
+    // Sync all three year inputs for this house
+    [2025, 2024, 2023].forEach(y => {
+        const el = document.getElementById(`area-${houseId}-${y}`);
+        if (el) el.value = parsed != null ? parsed.toFixed(1) : '';
+    });
+    if (dbOnline && house.dbId) {
+        try {
+            await fetch(`${API}/houses/${house.dbId}/meta`, {
+                method:'PATCH', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({field:'sam_area_m2', value: parsed != null ? String(parsed) : null})
+            });
+            showToast('Area saved', 'success');
+        } catch(e) { showToast(`Could not save area: ${e.message}`, 'error'); }
+    }
+}
+
+// ── Height class text field ───────────────────────
+async function saveHeightClass(houseId, year, value) {
+    const house = boundaries.find(h => h.id === houseId);
+    if (!house) return;
+    const hData = house.heights && house.heights[year];
+    if (!hData) return;
+    const trimmed = value.trim();
+    if (trimmed === (hData.cls || '')) return;   // no change
+    hData.cls = trimmed || null;
+    if (dbOnline && house.dbId) {
+        try {
+            await fetch(`${API}/houses/${house.dbId}/meta`, {
+                method:'PATCH', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({field:`height_class_${year}`, value: hData.cls})
+            });
+            showToast(`Height class saved`, 'success');
+        } catch(e) { showToast(`Could not save height: ${e.message}`, 'error'); }
+    }
+}
+
+// ── Contracted status ─────────────────────────────
+function contractedNextState(current) {
+    if (!current)                  return 'contracted';
+    if (current === 'contracted')  return 'non_contracted';
+    return null;   // non_contracted → unset
+}
+
+function updateContractedUI(house, year) {
+    const el = document.getElementById(`ctag-${house.id}-${year}`);
+    if (!el) return;
+    const val = house[`contracted_${year}`];
+    if (val === 'contracted') {
+        el.className = 'contracted-tag ctag-contracted';
+        el.textContent = '● Contracted';
+    } else if (val === 'non_contracted') {
+        el.className = 'contracted-tag ctag-non-contracted';
+        el.textContent = '○ Non-Contracted';
+    } else {
+        el.className = 'contracted-tag ctag-unset';
+        el.textContent = '— Set Status';
+    }
+}
+
+async function toggleContracted(houseId, year) {
+    const house = boundaries.find(h => h.id === houseId);
+    if (!house) return;
+    const key  = `contracted_${year}`;
+    const next = contractedNextState(house[key]);
+    house[key] = next;
+    updateContractedUI(house, year);
+    if (dbOnline && house.dbId) {
+        try {
+            await fetch(`${API}/houses/${house.dbId}/meta`, {
+                method: 'PATCH',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({field: key, value: next})
+            });
+        } catch(e) { showToast(`Could not save status: ${e.message}`, 'error'); }
+    }
+}
 
 // ── Export ────────────────────────────────────────
 function exportCSV() {
