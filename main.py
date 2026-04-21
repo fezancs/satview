@@ -9,7 +9,7 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -23,11 +23,20 @@ STATIC_DIR.mkdir(exist_ok=True)
 YEARS = [2025, 2024, 2023]
 
 EXTRA_FIELDS = [
-    'point_id', 'cluster_id', 'plot_index', 'sam_status', 'sam_score', 'sam_area_m2',
-    'sam_mask_wkt',
-    'height_m_2023', 'height_class_2023',
-    'height_m_2024', 'height_class_2024',
-    'height_m_2025', 'height_class_2025',
+    # Identifiers
+    'point_id', 'cluster_id', 'plot_index',
+    # SAM pipeline output
+    'sam_status', 'sam_score', 'sam_area_m2', 'sam_mask_wkt',
+    'sam_iou', 'covered_pct', 'sam_bbox_wkt', 'sam_mask_path',
+    'sam_rotation_deg', 'sam_error',
+    # Original plot area (from source CSV, never recomputed)
+    'plot_area_m2',
+    # Height data (all three years)
+    'height_m_2023', 'height_class_2023', 'height_src_2023',
+    'height_m_2024', 'height_class_2024', 'height_src_2024',
+    'height_m_2025', 'height_class_2025', 'height_src_2025',
+    # Construction status (researcher-annotated)
+    'constructed_2023', 'constructed_2024', 'constructed_2025',
 ]
 WAYBACK_BASE = "https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile"
 WAYBACK_RELEASES_FALLBACK = {
@@ -107,13 +116,27 @@ def init_db():
             print(f"✓ Migrated {len(rows)} rows to coords_json schema")
             cols = [row[1] for row in conn.execute("PRAGMA table_info(houses)").fetchall()]
         # Add any missing extra columns
-        col_types = {'point_id':'TEXT','cluster_id':'TEXT','plot_index':'INTEGER',
-                     'sam_status':'TEXT','sam_score':'REAL','sam_area_m2':'REAL',
-                     'sam_mask_wkt':'TEXT',
-                     'height_m_2023':'REAL','height_class_2023':'TEXT',
-                     'height_m_2024':'REAL','height_class_2024':'TEXT',
-                     'height_m_2025':'REAL','height_class_2025':'TEXT',
-                     'contracted_2023':'TEXT','contracted_2024':'TEXT','contracted_2025':'TEXT'}
+        col_types = {
+            # Identifiers
+            'point_id':'TEXT', 'cluster_id':'TEXT', 'plot_index':'INTEGER',
+            # SAM pipeline
+            'sam_status':'TEXT', 'sam_score':'REAL', 'sam_area_m2':'REAL',
+            'sam_mask_wkt':'TEXT', 'sam_iou':'REAL', 'covered_pct':'REAL',
+            'sam_bbox_wkt':'TEXT', 'sam_mask_path':'TEXT',
+            'sam_rotation_deg':'REAL', 'sam_error':'TEXT',
+            'plot_area_m2':'REAL',
+            # Height (all years)
+            'height_m_2023':'REAL', 'height_class_2023':'TEXT', 'height_src_2023':'TEXT',
+            'height_m_2024':'REAL', 'height_class_2024':'TEXT', 'height_src_2024':'TEXT',
+            'height_m_2025':'REAL', 'height_class_2025':'TEXT', 'height_src_2025':'TEXT',
+            # Construction status
+            'constructed_2023':'TEXT', 'constructed_2024':'TEXT', 'constructed_2025':'TEXT',
+            # Traceability — write-once originals + edit flags
+            'polygon_wkt_original':'TEXT',
+            'sam_mask_wkt_original':'TEXT',
+            'boundary_edited':'INTEGER',
+            'mask_edited':'INTEGER',
+        }
         for col, typ in col_types.items():
             if col not in cols:
                 conn.execute(f"ALTER TABLE houses ADD COLUMN {col} {typ}")
@@ -206,10 +229,29 @@ def proxy_tile(year: int, z: int, y: int, x: int):
 
 # ── Houses CRUD ───────────────────────────────────────────────────────────────
 @app.get("/api/houses")
-def list_houses():
+def list_houses(
+    page: int = Query(0, ge=0),
+    page_size: int = Query(0, ge=0),
+):
+    """List houses. page_size=0 returns all records (default). page_size>0 paginates."""
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM houses ORDER BY id").fetchall()
-    return [row_to_dict(r) for r in rows]
+        total = conn.execute("SELECT COUNT(*) FROM houses").fetchone()[0]
+        if page_size > 0:
+            offset = page * page_size
+            rows = conn.execute(
+                "SELECT * FROM houses ORDER BY id LIMIT ? OFFSET ?",
+                (page_size, offset)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM houses ORDER BY id").fetchall()
+    items = [row_to_dict(r) for r in rows]
+    return {
+        "total":     total,
+        "page":      page,
+        "page_size": page_size,
+        "has_more":  page_size > 0 and (page * page_size + page_size) < total,
+        "items":     items,
+    }
 
 @app.get("/api/houses/{house_id}")
 def get_house(house_id: int):
@@ -243,6 +285,7 @@ def update_house(house_id: int, body: HouseUpdate):
             updates["label"] = body.label
         if body.coords is not None:
             updates["coords_json"] = json.dumps(body.coords)
+            updates["boundary_edited"] = 1
         set_clause = ", ".join(f"{k}=?" for k in updates)
         conn.execute(f"UPDATE houses SET {set_clause} WHERE id=?",
                      (*updates.values(), house_id))
@@ -255,9 +298,9 @@ def delete_house(house_id: int):
     return {"message": "Deleted"}
 
 EDITABLE_META = {
-    'contracted_2023', 'contracted_2024', 'contracted_2025',
+    'constructed_2023', 'constructed_2024', 'constructed_2025',
     'height_class_2023', 'height_class_2024', 'height_class_2025',
-    'sam_area_m2',
+    'sam_area_m2', 'sam_mask_wkt',
 }
 
 class MetaUpdate(BaseModel):
@@ -276,6 +319,9 @@ def update_meta(house_id: int, body: MetaUpdate):
             f"UPDATE houses SET {body.field}=?, updated_at=datetime('now') WHERE id=?",
             (body.value, house_id)
         )
+        # Track that the mask was manually edited (for research traceability)
+        if body.field == 'sam_mask_wkt':
+            conn.execute("UPDATE houses SET mask_edited=1 WHERE id=?", (house_id,))
     return {"ok": True}
 
 # ── Duplicate helpers ─────────────────────────────────────────────────────────
@@ -306,6 +352,11 @@ def _safe_int(v):
     try: return int(v) if v and str(v).strip() else None
     except: return None
 
+def _safe_constructed(v):
+    """Only accept the two canonical status strings; everything else → None."""
+    val = (v or '').strip().lower()
+    return val if val in ('constructed', 'non_constructed') else None
+
 def _parse_csv_rows(content: str):
     """Parse CSV content. Returns (list_of_csv_entries, list_of_error_strings)."""
     new_rows, parse_errs = [], []
@@ -331,23 +382,41 @@ def _parse_csv_rows(content: str):
             except Exception as e:
                 parse_errs.append(f"Row {i+1}: {e}")
                 continue
-            point_id  = row_dict.get('point_id', '').strip()
+            point_id   = row_dict.get('point_id', '').strip()
             plot_index = row_dict.get('plot_index', '').strip()
-            label = f"{point_id} #{plot_index}" if point_id else f"House {i+1}"
+            # Prefer stored label (round-trip), fall back to computed
+            csv_label  = row_dict.get('label', '').strip()
+            label = csv_label or (f"{point_id} #{plot_index}" if point_id else f"House {i+1}")
             extra = {
-                'point_id':         point_id,
-                'cluster_id':       row_dict.get('cluster_id', '').strip(),
-                'plot_index':       _safe_int(plot_index),
-                'sam_status':       row_dict.get('sam_status', '').strip(),
-                'sam_score':        _safe_float(row_dict.get('sam_score')),
-                'sam_area_m2':      _safe_float(row_dict.get('sam_area_m2')),
-                'sam_mask_wkt':     row_dict.get('sam_mask_wkt', '').strip(),
-                'height_m_2023':    _safe_float(row_dict.get('height_m_2023')),
-                'height_class_2023':row_dict.get('height_class_2023', '').strip(),
-                'height_m_2024':    _safe_float(row_dict.get('height_m_2024')),
-                'height_class_2024':row_dict.get('height_class_2024', '').strip(),
-                'height_m_2025':    _safe_float(row_dict.get('height_m_2025')),
-                'height_class_2025':row_dict.get('height_class_2025', '').strip(),
+                'point_id':          point_id,
+                'cluster_id':        row_dict.get('cluster_id', '').strip(),
+                'plot_index':        _safe_int(plot_index),
+                # SAM pipeline
+                'sam_status':        row_dict.get('sam_status', '').strip() or None,
+                'sam_score':         _safe_float(row_dict.get('sam_score')),
+                'sam_area_m2':       _safe_float(row_dict.get('sam_area_m2')),
+                'sam_mask_wkt':      row_dict.get('sam_mask_wkt', '').strip() or None,
+                'sam_iou':           _safe_float(row_dict.get('sam_iou')),
+                'covered_pct':       _safe_float(row_dict.get('covered_pct')),
+                'sam_bbox_wkt':      row_dict.get('sam_bbox_wkt', '').strip() or None,
+                'sam_mask_path':     row_dict.get('sam_mask_path', '').strip() or None,
+                'sam_rotation_deg':  _safe_float(row_dict.get('sam_rotation_deg')),
+                'sam_error':         row_dict.get('sam_error', '').strip() or None,
+                'plot_area_m2':      _safe_float(row_dict.get('plot_area_m2')),
+                # Heights
+                'height_m_2023':     _safe_float(row_dict.get('height_m_2023')),
+                'height_class_2023': row_dict.get('height_class_2023', '').strip() or None,
+                'height_src_2023':   row_dict.get('height_src_2023', '').strip() or None,
+                'height_m_2024':     _safe_float(row_dict.get('height_m_2024')),
+                'height_class_2024': row_dict.get('height_class_2024', '').strip() or None,
+                'height_src_2024':   row_dict.get('height_src_2024', '').strip() or None,
+                'height_m_2025':     _safe_float(row_dict.get('height_m_2025')),
+                'height_class_2025': row_dict.get('height_class_2025', '').strip() or None,
+                'height_src_2025':   row_dict.get('height_src_2025', '').strip() or None,
+                # Construction status
+                'constructed_2023':  _safe_constructed(row_dict.get('constructed_2023')),
+                'constructed_2024':  _safe_constructed(row_dict.get('constructed_2024')),
+                'constructed_2025':  _safe_constructed(row_dict.get('constructed_2025')),
             }
             new_rows.append({"row_index": i, "label": label, "coords": coords, **extra})
     else:
@@ -417,8 +486,18 @@ class ConfirmedImport(BaseModel):
 
 def _insert_house(label: str, coords: list, extra: dict = None) -> int:
     extra = extra or {}
-    cols = ['label', 'coords_json'] + EXTRA_FIELDS
-    vals = [label, json.dumps(coords)] + [extra.get(f) for f in EXTRA_FIELDS]
+    # polygon_wkt_original / sam_mask_wkt_original are set ONCE at insert time
+    # and must never be overwritten — they preserve the as-imported state for research.
+    cols = (
+        ['label', 'coords_json', 'polygon_wkt_original', 'sam_mask_wkt_original']
+        + EXTRA_FIELDS
+    )
+    vals = (
+        [label, json.dumps(coords),
+         coords_to_wkt(coords),
+         extra.get('sam_mask_wkt') or '']
+        + [extra.get(f) for f in EXTRA_FIELDS]
+    )
     col_str      = ', '.join(cols)
     placeholders = ', '.join('?' * len(vals))
     with get_db() as conn:
@@ -428,7 +507,10 @@ def _insert_house(label: str, coords: list, extra: dict = None) -> int:
 def _update_house_from_csv(db_id: int, csv_row: dict):
     coords = csv_row["coords"]
     label  = csv_row.get("label")
-    set_parts = ["label=?", "coords_json=?", "updated_at=datetime('now')"]
+    # boundary_edited=1 because we're accepting the CSV's (possibly edited) boundary.
+    # polygon_wkt_original and sam_mask_wkt_original are intentionally excluded —
+    # they are write-once at INSERT and must never be overwritten.
+    set_parts = ["label=?", "coords_json=?", "boundary_edited=1", "updated_at=datetime('now')"]
     vals = [label, json.dumps(coords)]
     for f in EXTRA_FIELDS:
         if f in csv_row:
@@ -466,19 +548,76 @@ def confirmed_import(body: ConfirmedImport):
         "message":  f"✓ {len(inserted)} inserted, {len(updated)} updated."
     }
 
+# ── DB utilities ─────────────────────────────────────────────────────────────
+@app.delete("/api/db/clear")
+def clear_database():
+    """Delete every house record. Irreversible."""
+    with get_db() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM houses").fetchone()[0]
+        conn.execute("DELETE FROM houses")
+        # Reset auto-increment counter so new IDs start from 1 again
+        conn.execute("DELETE FROM sqlite_sequence WHERE name='houses'")
+    print(f"✓ Cleared {count} records from database")
+    return {"deleted": count, "message": f"Database cleared — {count} records removed."}
+
 # ── CSV Export ────────────────────────────────────────────────────────────────
 @app.get("/api/export/csv")
 def export_csv():
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM houses ORDER BY id").fetchall()
 
+    # Column order is designed for research traceability:
+    # identifiers → boundary before/after → mask before/after → height → status → SAM metadata
+    export_cols = [
+        # ── Identifiers ──────────────────────────────────────────
+        'id', 'label', 'point_id', 'cluster_id', 'plot_index',
+        # ── Boundary traceability ────────────────────────────────
+        'polygon_wkt_original',   # as-imported boundary (write-once, never edited)
+        'polygon_wkt',            # current boundary (may have been manually adjusted)
+        'boundary_edited',        # 1 = researcher moved boundary points
+        'sam_area_m2',            # area of the CURRENT boundary (m²)
+        'plot_area_m2',           # area of the ORIGINAL plot boundary from source (m²)
+        # ── Mask traceability ────────────────────────────────────
+        'sam_mask_wkt_original',  # as-imported SAM mask (write-once)
+        'sam_mask_wkt',           # current mask (may have been manually adjusted)
+        'mask_edited',            # 1 = researcher moved mask points
+        # ── Height (all years) ───────────────────────────────────
+        'height_m_2023', 'height_class_2023', 'height_src_2023',
+        'height_m_2024', 'height_class_2024', 'height_src_2024',
+        'height_m_2025', 'height_class_2025', 'height_src_2025',
+        # ── Construction status (researcher-annotated) ───────────
+        'constructed_2023', 'constructed_2024', 'constructed_2025',
+        # ── SAM pipeline metadata ────────────────────────────────
+        'sam_status', 'sam_score', 'sam_iou', 'covered_pct',
+        'sam_bbox_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
+        # ── Audit timestamps ─────────────────────────────────────
+        'created_at', 'updated_at',
+    ]
+
     output = io.StringIO()
-    output.write("polygon_wkt\n")
+    writer = csv_module.writer(output, quoting=csv_module.QUOTE_MINIMAL)
+    writer.writerow(export_cols)
+
+    db_cols = set()
+    if rows:
+        db_cols = set(rows[0].keys())
+
     for r in rows:
         coords = json.loads(r['coords_json'] or '[]')
         if not coords:
             continue
-        output.write(f'"{coords_to_wkt(coords)}"\n')
+        current_wkt = coords_to_wkt(coords)
+        row_data = []
+        for col in export_cols:
+            if col == 'polygon_wkt':
+                row_data.append(current_wkt)
+            elif col not in db_cols:
+                # Column not yet in DB (older records before migration)
+                row_data.append('')
+            else:
+                v = r[col]
+                row_data.append(v if v is not None else '')
+        writer.writerow(row_data)
 
     return Response(
         content=output.getvalue(),
