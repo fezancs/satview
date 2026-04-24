@@ -45,9 +45,11 @@ h1.hero span { color:var(--c24); }
 .source-card h3 { font-size:13px; font-weight:700; margin-bottom:5px; }
 .source-card p  { font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; line-height:1.5; }
 .badge { display:inline-block; font-size:9px; font-family:'Space Mono',monospace; letter-spacing:.1em; padding:2px 8px; border-radius:3px; margin-top:8px; }
-.badge-csv  { background:rgba(0,229,255,.1);   color:var(--c24); border:1px solid rgba(0,229,255,.3); }
-.badge-db   { background:rgba(191,95,255,.1);  color:var(--c25); border:1px solid rgba(191,95,255,.3); }
-.badge-both { background:rgba(168,255,62,.1);  color:var(--c23); border:1px solid rgba(168,255,62,.3); }
+.badge-csv   { background:rgba(0,229,255,.1);   color:var(--c24); border:1px solid rgba(0,229,255,.3); }
+.badge-db    { background:rgba(191,95,255,.1);  color:var(--c25); border:1px solid rgba(191,95,255,.3); }
+.badge-both  { background:rgba(168,255,62,.1);  color:var(--c23); border:1px solid rgba(168,255,62,.3); }
+.badge-dedupe{ background:rgba(255,149,0,.1);   color:#ff9500;    border:1px solid rgba(255,149,0,.3); }
+.source-card.dedupe-card:hover { border-color:#ff9500; background:rgba(255,149,0,.03); box-shadow:0 0 30px rgba(255,149,0,.07); }
 input[type="file"] { display:none; }
 .format-info { margin-top:4px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 20px; width:100%; max-width:640px; position:relative; z-index:1; }
 .format-info .tag { font-size:10px; font-family:'Space Mono',monospace; letter-spacing:.15em; text-transform:uppercase; color:var(--c24); margin-bottom:8px; display:block; }
@@ -188,6 +190,9 @@ input[type="file"] { display:none; }
 .edit-btn { position:absolute; top:7px; right:7px; z-index:600; font-family:'Space Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; background:rgba(0,229,255,.15); color:var(--c24); border:1px solid rgba(0,229,255,.4); transition:all .2s; }
 .edit-btn:hover { background:rgba(0,229,255,.3); }
 .edit-btn.active { background:rgba(168,255,62,.2); color:var(--c23); border-color:rgba(168,255,62,.5); }
+.mask-edit-btn { position:absolute; top:7px; right:70px; z-index:600; font-family:'Space Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; background:rgba(191,95,255,.15); color:var(--c25); border:1px solid rgba(191,95,255,.4); transition:all .2s; }
+.mask-edit-btn:hover { background:rgba(191,95,255,.3); }
+.mask-edit-btn.active { background:rgba(168,255,62,.2); color:var(--c23); border-color:rgba(168,255,62,.5); }
 .brush-toolbar { position:absolute; top:30px; right:7px; z-index:600; display:none; flex-direction:column; gap:4px; }
 .tool-row { display:flex; gap:3px; align-items:center; }
 .brush-btn { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all .15s; }
@@ -204,6 +209,35 @@ input[type="file"] { display:none; }
 .spinner { width:24px; height:24px; border:2px solid var(--border); border-top-color:var(--c24); border-radius:50%; animation:spin .7s linear infinite; }
 .coord-changed { color:var(--c23) !important; }
 
+/* ── Bulk Select ── */
+.house-row.bulk-selected { background:rgba(255,61,113,.05); outline:1px solid rgba(255,61,113,.18); outline-offset:-1px; }
+.hl-checkbox-row { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
+.house-checkbox {
+    width:15px; height:15px; cursor:pointer; accent-color:var(--c22);
+    flex-shrink:0; border-radius:3px;
+}
+.hl-checkbox-label { font-family:'Space Mono',monospace; font-size:8px; color:var(--muted); cursor:pointer; user-select:none; }
+#bulkActionBar {
+    position:fixed; bottom:40px; left:0; right:0; z-index:7000;
+    display:none; align-items:center; gap:12px; padding:10px 22px;
+    background:rgba(10,12,15,.97); border-top:1.5px solid rgba(255,61,113,.5);
+    backdrop-filter:blur(8px);
+    font-family:'Space Mono',monospace; font-size:11px;
+    animation:slideUp .2s ease;
+}
+#bulkActionBar.visible { display:flex; }
+.bulk-count { color:var(--c22); font-weight:700; font-size:14px; min-width:28px; }
+.bulk-label { color:var(--muted); font-size:10px; }
+.btn-red { background:rgba(255,61,113,.12); border-color:rgba(255,61,113,.4); color:var(--c22); }
+.btn-red:hover { background:rgba(255,61,113,.28); }
+
+/* DB info bar on upload screen */
+#dbInfoBar { display:none; width:100%; max-width:640px; margin-top:10px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px 16px; font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); position:relative; z-index:1; gap:16px; align-items:center; flex-wrap:wrap; }
+#dbInfoBar.show { display:flex; }
+#dbInfoBar .dbi-count { color:var(--c24); font-weight:700; font-size:13px; }
+#dbInfoBar .dbi-label { color:var(--muted); }
+.btn-danger { background:rgba(255,61,113,.1); border-color:rgba(255,61,113,.3); color:var(--c22); margin-left:auto; }
+.btn-danger:hover { background:rgba(255,61,113,.25); }
 
 /* DB Status Bar */
 #dbStatusBar { position:fixed; bottom:0; left:0; right:0; z-index:500; padding:6px 22px; font-family:'Space Mono',monospace; font-size:10px; background:var(--surface); border-top:1px solid var(--border); display:none; align-items:center; gap:18px; }
@@ -250,22 +284,144 @@ input[type="file"] { display:none; }
 .hs-25 .hcls-input:focus { border-color:var(--c25); color:var(--c25); }
 .hs-24 .hcls-input:focus { border-color:var(--c24); color:var(--c24); }
 .hs-23 .hcls-input:focus { border-color:var(--c23); color:var(--c23); }
-/* Contracted tag */
-.contracted-row { padding:4px 8px 6px; border-top:1px solid var(--border); }
-.contracted-tag {
+/* constructed tag */
+.constructed-row { padding:4px 8px 6px; border-top:1px solid var(--border); }
+.constructed-tag {
     font-family:'Space Mono',monospace; font-size:9px; font-weight:700;
     letter-spacing:.08em; text-transform:uppercase;
     padding:3px 10px; border-radius:4px; cursor:pointer;
     border:1px solid; display:inline-block; transition:all .2s; user-select:none;
 }
-.ctag-contracted    { color:#a8ff3e; border-color:rgba(168,255,62,.4); background:rgba(168,255,62,.1); }
-.ctag-contracted:hover { background:rgba(168,255,62,.22); }
-.ctag-non-contracted { color:#ff3d71; border-color:rgba(255,61,113,.4); background:rgba(255,61,113,.1); }
-.ctag-non-contracted:hover { background:rgba(255,61,113,.22); }
+.ctag-constructed    { color:#a8ff3e; border-color:rgba(168,255,62,.4); background:rgba(168,255,62,.1); }
+.ctag-constructed:hover { background:rgba(168,255,62,.22); }
+.ctag-non-constructed { color:#ff3d71; border-color:rgba(255,61,113,.4); background:rgba(255,61,113,.1); }
+.ctag-non-constructed:hover { background:rgba(255,61,113,.22); }
 .ctag-unset         { color:var(--muted); border-color:var(--border); background:transparent; }
 .ctag-unset:hover   { border-color:var(--muted); color:var(--text); }
 .hl-pid  { font-family:'Space Mono',monospace; font-size:10px; color:var(--c24); margin-top:2px; }
 .hl-meta { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-top:1px; }
+
+/* ═══════════════════════════════════════════
+   DEDUPE / MATCH SELECTOR SCREEN
+═══════════════════════════════════════════ */
+#dedupeScreen.active { flex-direction:column; height:100vh; overflow:hidden; background:var(--bg); }
+
+/* Top bar */
+.dedupe-topbar {
+    display:flex; align-items:center; gap:14px; padding:10px 20px;
+    border-bottom:1px solid var(--border); background:var(--surface);
+    position:sticky; top:0; z-index:300; flex-wrap:wrap;
+}
+.dtb-brand { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.3em; color:#ff9500; text-transform:uppercase; white-space:nowrap; }
+.dtb-progress { flex:1; min-width:200px; }
+.dp-stats { font-family:'Space Mono',monospace; font-size:10px; display:flex; gap:14px; margin-bottom:5px; flex-wrap:wrap; }
+.dp-confirmed { color:var(--c23); } .dp-auto { color:#ff9500; } .dp-review { color:var(--c22); } .dp-total { color:var(--muted); }
+.dp-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.dp-bar-fill  { height:100%; background:linear-gradient(90deg,var(--c23),#ff9500); border-radius:2px; transition:width .5s ease; }
+.dtb-actions  { display:flex; gap:8px; align-items:center; }
+
+/* Body layout */
+.dedupe-body { display:flex; flex:1; overflow:hidden; min-height:0; }
+
+/* Left: PIN list panel */
+.dedupe-pins-panel {
+    width:272px; flex-shrink:0; display:flex; flex-direction:column;
+    border-right:1px solid var(--border); background:var(--surface); overflow:hidden;
+}
+.dpp-header { padding:10px 12px 6px; border-bottom:1px solid var(--border); }
+.dpp-filter-row { display:flex; gap:4px; }
+.dpf {
+    flex:1; font-family:'Space Mono',monospace; font-size:9px; font-weight:700;
+    padding:4px 6px; border-radius:5px; cursor:pointer; border:1px solid var(--border);
+    background:transparent; color:var(--muted); transition:all .15s; text-transform:uppercase; letter-spacing:.05em;
+}
+.dpf.active { background:rgba(255,149,0,.15); border-color:rgba(255,149,0,.5); color:#ff9500; }
+.dpp-list { flex:1; overflow-y:auto; padding:4px; }
+.dpp-item {
+    display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px;
+    cursor:pointer; transition:background .15s; margin-bottom:2px;
+}
+.dpp-item:hover   { background:rgba(255,255,255,.04); }
+.dpp-item.active  { background:rgba(255,149,0,.12); border:1px solid rgba(255,149,0,.3); }
+.dpp-dot { font-size:11px; width:14px; text-align:center; flex-shrink:0; }
+.dot-review   { color:var(--c22); }
+.dot-auto     { color:#ff9500; }
+.dot-confirmed{ color:var(--c23); }
+.dpp-item-body { flex:1; min-width:0; }
+.dpp-pin-id   { font-family:'Space Mono',monospace; font-size:10px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dpp-pin-meta { font-family:'Space Mono',monospace; font-size:8px; color:var(--muted); margin-top:1px; }
+.dpp-empty    { padding:20px; text-align:center; font-family:'Space Mono',monospace; font-size:11px; color:var(--muted); }
+.dpp-pagination { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-top:1px solid var(--border); gap:6px; }
+
+/* Center: Map */
+.dedupe-map-panel { flex:1; position:relative; min-width:0; }
+#dedupeMap { position:absolute; inset:0; z-index:1; }
+.dedupe-year-pills {
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    z-index:500; display:flex; gap:4px; background:rgba(10,12,15,.75); padding:4px 6px; border-radius:8px;
+    border:1px solid var(--border); backdrop-filter:blur(4px);
+}
+.dyp {
+    font-family:'Space Mono',monospace; font-size:10px; font-weight:700;
+    padding:4px 12px; border-radius:5px; cursor:pointer; border:1px solid transparent;
+    background:transparent; color:var(--muted); transition:all .15s;
+}
+.dyp.active { background:rgba(255,149,0,.2); color:#ff9500; border-color:rgba(255,149,0,.5); }
+.dedupe-map-hint {
+    position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+    z-index:500; font-family:'Space Mono',monospace; font-size:9px; color:rgba(255,255,255,.45);
+    background:rgba(10,12,15,.65); padding:4px 10px; border-radius:5px;
+    pointer-events:none; white-space:nowrap;
+}
+
+/* Right: Info/candidates panel */
+.dedupe-info-panel {
+    width:320px; flex-shrink:0; display:flex; flex-direction:column;
+    border-left:1px solid var(--border); background:var(--surface); overflow:hidden;
+}
+.dip-pin-header { padding:12px 14px 8px; border-bottom:1px solid var(--border); }
+.dip-pin-id { font-family:'Space Mono',monospace; font-size:11px; font-weight:700; color:var(--text); word-break:break-all; margin-bottom:6px; }
+.dip-tax-grid { display:flex; flex-wrap:wrap; gap:4px 10px; }
+.dip-tax-cell { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); }
+.dip-tax-cell strong { color:var(--text); }
+.dip-cands-header {
+    padding:6px 14px; font-family:'Space Mono',monospace; font-size:9px;
+    text-transform:uppercase; letter-spacing:.15em; color:var(--muted);
+    border-bottom:1px solid var(--border); display:flex; justify-content:space-between;
+}
+.dip-cands-list { flex:1; overflow-y:auto; padding:6px; }
+
+/* Candidate card */
+.dc-item {
+    border:1.5px solid var(--border); border-radius:9px; padding:10px 11px;
+    margin-bottom:6px; cursor:pointer; transition:all .15s; background:var(--card);
+}
+.dc-item:hover   { border-color:rgba(255,255,255,.15); background:rgba(255,255,255,.03); }
+.dc-item.selected{ border-color:var(--rank-color,#ff9500); background:rgba(255,149,0,.05); box-shadow:0 0 12px rgba(255,149,0,.08); }
+.dc-header { display:flex; align-items:center; gap:6px; margin-bottom:7px; }
+.dc-rank   { font-family:'Space Mono',monospace; font-size:11px; font-weight:700; }
+.dc-type   { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); background:rgba(255,255,255,.05); padding:1px 6px; border-radius:3px; }
+.dc-sel-badge { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; letter-spacing:.1em; padding:2px 7px; border-radius:3px; background:rgba(255,149,0,.18); color:#ff9500; border:1px solid rgba(255,149,0,.4); margin-left:auto; }
+.dc-scores { display:flex; flex-direction:column; gap:4px; margin-bottom:7px; }
+.dc-score-bar { display:flex; align-items:center; gap:5px; }
+.dc-score-label { font-family:'Space Mono',monospace; font-size:8px; color:var(--muted); width:60px; flex-shrink:0; }
+.dc-bar-track { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.dc-bar-fill  { height:100%; border-radius:2px; transition:width .3s; }
+.dc-score-val { font-family:'Space Mono',monospace; font-size:8px; color:var(--text); width:34px; text-align:right; }
+.dc-meta { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:5px; }
+.dc-meta span { font-family:'Space Mono',monospace; font-size:8px; color:var(--muted); background:rgba(255,255,255,.04); padding:1px 6px; border-radius:3px; }
+.dc-height { display:flex; gap:4px; }
+.dc-height span { font-family:'Space Mono',monospace; font-size:8px; color:var(--c24); background:rgba(0,229,255,.06); padding:1px 6px; border-radius:3px; border:1px solid rgba(0,229,255,.15); }
+
+/* Footer actions */
+.dip-footer { padding:10px 12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:7px; }
+.dip-notes {
+    width:100%; resize:none; font-family:'Space Mono',monospace; font-size:10px;
+    background:var(--card); border:1px solid var(--border); border-radius:7px;
+    padding:7px 10px; color:var(--text); outline:none; transition:border-color .2s;
+}
+.dip-notes:focus { border-color:#ff9500; }
+.dip-keynav { font-family:'Space Mono',monospace; font-size:8px; color:var(--muted); text-align:center; }
 </style>
 </head>
 <body>
@@ -295,6 +451,12 @@ input[type="file"] { display:none; }
             <p>DB records + new CSV.<br>Conflict resolver included.</p>
             <span class="badge badge-both">MERGE</span>
         </div>
+        <div class="source-card dedupe-card" onclick="document.getElementById('dedupeFileInput').click()">
+            <span class="icon">🔗</span>
+            <h3>Deduplicate Matches</h3>
+            <p>Select best plot per PIN<br>from matched results CSV.</p>
+            <span class="badge badge-dedupe">MATCH SELECTOR</span>
+        </div>
     </div>
     <div class="format-info">
         <span class="tag">▸ CSV FORMAT — new multi-column format with height data supported</span>
@@ -302,8 +464,14 @@ input[type="file"] { display:none; }
 height_m_2023, height_class_2023, height_m_2024, height_class_2024, height_m_2025, height_class_2025
 — or legacy: polygon_wkt (single column)</code>
     </div>
+    <div id="dbInfoBar">
+        <span class="dbi-count" id="dbRecordCount">0</span>
+        <span class="dbi-label">records currently in database</span>
+        <button class="btn btn-danger" onclick="clearDatabase()">🗑 Clear Database</button>
+    </div>
     <div id="alertBox"></div>
     <input type="file" id="fileInput" accept=".csv,.txt">
+    <input type="file" id="dedupeFileInput" accept=".csv">
 </div>
 
 <!-- DUPLICATE RESOLUTION SCREEN -->
@@ -346,9 +514,15 @@ height_m_2023, height_class_2023, height_m_2024, height_class_2024, height_m_202
         <div class="top-bar-left">
             <span class="top-bar-brand">// SATVIEW</span>
             <span class="top-bar-count" id="houseCount"></span>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);user-select:none;padding:4px 0;" title="Select all visible houses">
+                <input type="checkbox" id="selectAllChk" style="accent-color:var(--c22);width:14px;height:14px;cursor:pointer;" onchange="selectAllChkChanged(this.checked)">
+                <span id="selectAllLabel">Select All</span>
+            </label>
         </div>
         <div class="top-bar-right">
             <button class="btn btn-purple" onclick="document.getElementById('fileInput2').click()">+ Import CSV</button>
+            <button class="btn btn-outline" onclick="openBulkEdit()">✎ Bulk Storeys</button>
+            <button class="btn btn-outline" onclick="openBulkStatus()">⬡ Bulk Status</button>
             <button class="btn btn-green"  onclick="exportCSV()">⬇ Export CSV</button>
             <button class="btn btn-outline" onclick="resetView()">← New Load</button>
         </div>
@@ -361,6 +535,90 @@ height_m_2023, height_class_2023, height_m_2024, height_class_2024, height_m_202
         <div class="yhcell yhcell-23"><span class="ynum ynum-23">2023</span><span class="ysub">2 Yrs Ago</span><div class="ysrc" id="src-23">—</div></div>
     </div>
     <div class="gallery-body" id="galleryBody"></div>
+    <div id="loadMoreBar" style="display:none; padding:20px 28px; text-align:center; border-top:1px solid var(--border); background:var(--surface);">
+        <button class="btn btn-outline" id="loadMoreBtn" onclick="loadMoreGallery()">Load More Houses</button>
+        <span id="loadMoreCount" style="font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); margin-left:14px;"></span>
+    </div>
+</div>
+
+<!-- DEDUPE / MATCH SELECTOR SCREEN -->
+<div id="dedupeScreen" class="screen">
+    <!-- Top bar -->
+    <div class="dedupe-topbar">
+        <span class="dtb-brand">// Match Selector</span>
+        <div class="dtb-progress">
+            <div class="dp-stats" id="dpProgress">
+                <span class="dp-total">No session — upload a matched CSV to begin</span>
+            </div>
+            <div class="dp-bar-track"><div class="dp-bar-fill" id="dpProgressBar" style="width:0%"></div></div>
+        </div>
+        <div class="dtb-actions">
+            <button class="btn btn-outline" style="font-size:9px" onclick="dedupeBulkConfirm()">⚡ Auto-Confirm High Confidence</button>
+            <button class="btn btn-green"   onclick="dedupeExport()">⬇ Export Deduplicated CSV</button>
+            <button class="btn btn-danger"  style="font-size:9px" onclick="dedupeResetSession()">✕ Reset</button>
+            <button class="btn btn-outline" style="font-size:9px" onclick="showScreen('uploadScreen')">← Back</button>
+        </div>
+    </div>
+
+    <!-- Three-panel body -->
+    <div class="dedupe-body">
+
+        <!-- Left: PIN list -->
+        <div class="dedupe-pins-panel">
+            <div class="dpp-header">
+                <div class="dpp-filter-row">
+                    <button class="dpf active" id="dpf-all"          onclick="dedupeSetFilter('all')">All</button>
+                    <button class="dpf"        id="dpf-needs_review" onclick="dedupeSetFilter('needs_review')">Review</button>
+                    <button class="dpf"        id="dpf-auto"         onclick="dedupeSetFilter('auto')">Auto</button>
+                    <button class="dpf"        id="dpf-confirmed"    onclick="dedupeSetFilter('confirmed')">Done</button>
+                </div>
+            </div>
+            <div id="dedupePinsList" class="dpp-list">
+                <div class="dpp-empty">Upload a matched CSV to start</div>
+            </div>
+            <div class="dpp-pagination">
+                <button class="btn btn-outline" style="padding:4px 10px;font-size:9px" onclick="dedupePagePrev()">←</button>
+                <span id="dedupePinsPage" style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)">— / —</span>
+                <button class="btn btn-outline" style="padding:4px 10px;font-size:9px" onclick="dedupePageNext()">→</button>
+            </div>
+        </div>
+
+        <!-- Center: Satellite map -->
+        <div class="dedupe-map-panel">
+            <div id="dedupeMap"></div>
+            <div class="dedupe-year-pills">
+                <button class="dyp active" id="dyp-2025" onclick="dedupeSetYear(2025)">2025</button>
+                <button class="dyp"        id="dyp-2024" onclick="dedupeSetYear(2024)">2024</button>
+                <button class="dyp"        id="dyp-2023" onclick="dedupeSetYear(2023)">2023</button>
+            </div>
+            <div class="dedupe-map-hint">Click a polygon or candidate card to select · Keys: ↑↓ navigate · 1–9 select rank · Enter confirm</div>
+        </div>
+
+        <!-- Right: Candidate selector -->
+        <div class="dedupe-info-panel">
+            <div class="dip-pin-header">
+                <div class="dip-pin-id" id="dedupePinId">Select a PIN from the list</div>
+                <div class="dip-tax-grid" id="dedupeTaxInfo"></div>
+            </div>
+            <div class="dip-cands-header">
+                <span>CANDIDATES</span>
+                <span id="dedupeCandCount"></span>
+            </div>
+            <div id="dedupeCandidates" class="dip-cands-list">
+                <div class="dpp-empty" style="padding:20px;text-align:center;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">No PIN selected</div>
+            </div>
+            <div class="dip-footer">
+                <textarea id="dedupeNotes" class="dip-notes" placeholder="Notes (optional)..." rows="2"></textarea>
+                <button class="btn btn-green" id="dedupeConfirmBtn" onclick="dedupeConfirmSelection()" disabled style="width:100%;opacity:.5">Select a PIN first</button>
+                <div style="display:flex;gap:6px">
+                    <button class="btn btn-outline" style="flex:1;font-size:9px" onclick="dedupeNavPin(-1)">← Prev PIN</button>
+                    <button class="btn btn-outline" style="flex:1;font-size:9px" onclick="dedupeNavPin(1)">Next PIN →</button>
+                </div>
+                <div class="dip-keynav">↑↓ or J/K navigate · 1–9 select rank · Enter confirm</div>
+            </div>
+        </div>
+
+    </div>
 </div>
 
 <!-- PROGRESS OVERLAY -->
@@ -377,6 +635,91 @@ height_m_2023, height_class_2023, height_m_2024, height_class_2024, height_m_202
 <!-- TOAST CONTAINER -->
 <div id="toastContainer"></div>
 
+<!-- BULK ACTION BAR -->
+<div id="bulkActionBar">
+    <span class="bulk-count" id="bulkCount">0</span>
+    <span class="bulk-label">house(s) selected</span>
+    <button class="btn btn-red" onclick="bulkDeleteSelected()" style="margin-left:4px;">🗑 Delete Selected</button>
+    <button class="btn btn-outline" onclick="deselectAllHouses()" style="font-size:9px;">✕ Clear</button>
+</div>
+
+<!-- BULK EDIT STOREYS MODAL -->
+<div id="bulkEditModal" style="display:none; position:fixed; inset:0; z-index:8000; background:rgba(10,12,15,.92); align-items:center; justify-content:center;">
+    <div style="background:var(--card); border:1.5px solid var(--border); border-radius:16px; padding:28px 32px; width:100%; max-width:500px; position:relative;">
+        <div style="font-size:10px; font-family:'Space Mono',monospace; letter-spacing:.3em; color:var(--c24); text-transform:uppercase; margin-bottom:10px;">// Bulk Edit</div>
+        <h3 style="font-size:17px; font-weight:800; margin-bottom:5px;">Set Storeys / Height Class</h3>
+        <p style="font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-bottom:22px;">
+            Applies to all <strong id="bulkHouseCount" style="color:var(--text)">0</strong> loaded houses — leave a field blank to skip that year
+        </p>
+        <div id="bulkYearRows" style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;"></div>
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 13px; font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-bottom:20px; line-height:1.6;">
+            Examples: <span style="color:var(--c23)">1</span> · <span style="color:var(--c23)">G+1</span> · <span style="color:var(--c23)">2</span> · <span style="color:var(--c23)">N/A</span> · <span style="color:var(--c23)">0</span> — changes are saved to the database immediately
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-outline" onclick="closeBulkEdit()">Cancel</button>
+            <button class="btn btn-green" onclick="applyBulkEdit()">Apply to All Houses</button>
+        </div>
+    </div>
+</div>
+
+<!-- BULK STATUS MODAL -->
+<div id="bulkStatusModal" style="display:none; position:fixed; inset:0; z-index:8000; background:rgba(10,12,15,.92); align-items:center; justify-content:center;">
+    <div style="background:var(--card); border:1.5px solid var(--border); border-radius:16px; padding:28px 32px; width:100%; max-width:500px; position:relative;">
+        <div style="font-size:10px; font-family:'Space Mono',monospace; letter-spacing:.3em; color:var(--c24); text-transform:uppercase; margin-bottom:10px;">// Bulk Edit</div>
+        <h3 style="font-size:17px; font-weight:800; margin-bottom:5px;">Set Construction Status</h3>
+        <p style="font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-bottom:22px;">
+            Applies to all <strong id="bulkStatusCount" style="color:var(--text)">0</strong> loaded houses
+        </p>
+
+        <!-- Status selector -->
+        <div style="margin-bottom:20px;">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.15em; color:var(--muted); margin-bottom:10px;">Select status to apply</div>
+            <div style="display:flex; gap:10px;">
+                <button id="bst-btn-constructed"
+                    onclick="selectBulkStatus('constructed')"
+                    style="flex:1; padding:12px 8px; border-radius:8px; cursor:pointer; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border:1.5px solid rgba(168,255,62,.35); background:rgba(168,255,62,.08); color:var(--c23); transition:all .2s;">
+                    ● Constructed
+                </button>
+                <button id="bst-btn-non_constructed"
+                    onclick="selectBulkStatus('non_constructed')"
+                    style="flex:1; padding:12px 8px; border-radius:8px; cursor:pointer; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border:1.5px solid rgba(255,61,113,.35); background:rgba(255,61,113,.08); color:var(--c22); transition:all .2s;">
+                    ○ Non-Constructed
+                </button>
+                <button id="bst-btn-unset"
+                    onclick="selectBulkStatus('unset')"
+                    style="flex:1; padding:12px 8px; border-radius:8px; cursor:pointer; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border:1.5px solid var(--border); background:transparent; color:var(--muted); transition:all .2s;">
+                    — Unset
+                </button>
+            </div>
+        </div>
+
+        <!-- Year checkboxes -->
+        <div style="margin-bottom:18px;">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:.15em; color:var(--muted); margin-bottom:10px;">Apply to years</div>
+            <div style="display:flex; gap:18px;">
+                <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-family:'Space Mono',monospace; font-size:11px; font-weight:700; color:var(--c25);">
+                    <input type="checkbox" id="bst-yr-2025" checked style="accent-color:var(--c25);"> 2025
+                </label>
+                <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-family:'Space Mono',monospace; font-size:11px; font-weight:700; color:var(--c24);">
+                    <input type="checkbox" id="bst-yr-2024" checked style="accent-color:var(--c24);"> 2024
+                </label>
+                <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-family:'Space Mono',monospace; font-size:11px; font-weight:700; color:var(--c23);">
+                    <input type="checkbox" id="bst-yr-2023" checked style="accent-color:var(--c23);"> 2023
+                </label>
+            </div>
+        </div>
+
+        <div id="bst-note" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 13px; font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-bottom:20px; line-height:1.6; display:none;">
+            Setting <strong style="color:var(--c22)">Non-Constructed</strong> will also auto-zero the height class for selected years.
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-outline" onclick="closeBulkStatus()">Cancel</button>
+            <button id="bst-apply-btn" class="btn btn-green" onclick="applyBulkStatus()" disabled style="opacity:.45;">Apply to All Houses</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const API = 'http://localhost:8000/api';
 const WAYBACK_BASE     = 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile';
@@ -385,13 +728,17 @@ const YEARS  = [2025,2024,2023];
 const COLORS = {2025:'#bf5fff',2024:'#00e5ff',2023:'#a8ff3e'};
 const BCLASS = {2025:'badge-25',2024:'badge-24',2023:'badge-23'};
 
-let boundaries   = [];
-let allMaps      = [];
-let waybackConf  = null;
-let dbOnline     = false;
+let boundaries      = [];
+let allMaps         = [];
+let waybackConf     = null;
+let dbOnline        = false;
 let dupeCheckData   = null;
 let dupeResolutions = {};
 let pendingFile     = null;
+let currentGalleryPage = 0;
+let mapLazyObserver    = null;
+const GALLERY_PAGE_SIZE = 20;
+let selectedHouseIds = new Set();
 
 // ── Screen management ─────────────────────────────
 function showScreen(id) {
@@ -399,7 +746,7 @@ function showScreen(id) {
     document.getElementById(id).classList.add('active');
 }
 
-// ── DB health ─────────────────────────────────────
+// ── DB health + record count ──────────────────────
 async function checkDB() {
     try { const r = await fetch(`${API}/health`,{signal:AbortSignal.timeout(3000)}); dbOnline = r.ok; }
     catch { dbOnline = false; }
@@ -409,8 +756,34 @@ async function checkDB() {
     document.getElementById('dbStatusText').textContent = dbOnline
         ? 'Backend connected — duplicate checking enabled'
         : 'Backend offline — CSV-only mode (no duplicate check)';
+    await refreshDbCount();
 }
 checkDB();
+
+async function refreshDbCount() {
+    const infoBar = document.getElementById('dbInfoBar');
+    if (!dbOnline) { infoBar.classList.remove('show'); return; }
+    try {
+        const resp = await fetch(`${API}/houses`);
+        const data = await resp.json();
+        const total = typeof data.total === 'number' ? data.total : (Array.isArray(data) ? data.length : 0);
+        document.getElementById('dbRecordCount').textContent = total;
+        infoBar.classList.toggle('show', true);
+    } catch { infoBar.classList.remove('show'); }
+}
+
+async function clearDatabase() {
+    const countEl = document.getElementById('dbRecordCount');
+    const current = parseInt(countEl.textContent) || 0;
+    if (current === 0) { showAlert('Database is already empty.', 'info'); return; }
+    if (!confirm(`This will permanently delete all ${current} records from the database.\n\nThis cannot be undone. Continue?`)) return;
+    try {
+        const res  = await fetch(`${API}/db/clear`, {method:'DELETE'});
+        const data = await res.json();
+        showAlert(`✓ ${data.message}`, 'success');
+        await refreshDbCount();
+    } catch(e) { showAlert('Clear failed: ' + e.message, 'error'); }
+}
 
 // ── Wayback config ────────────────────────────────
 async function fetchWaybackConfig() {
@@ -623,10 +996,22 @@ async function confirmImport() {
 }
 
 async function doConfirmedImport(payload) {
+    // Snapshot DB count BEFORE import so we can show a meaningful summary
+    let countBefore = 0;
+    try {
+        const snap = await fetch(`${API}/houses`);
+        const snapData = await snap.json();
+        countBefore = typeof snapData.total === 'number' ? snapData.total : (Array.isArray(snapData) ? snapData.length : 0);
+    } catch {}
+
     try {
         const res  = await fetch(`${API}/import/confirmed`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         const data = await res.json();
-        showAlert(`✓ ${data.inserted} inserted, ${data.updated} updated.`, 'success');
+        const countAfter = countBefore + data.inserted;
+        showAlert(
+            `✓ ${data.inserted} new records added, ${data.updated} updated.  DB: ${countBefore} → ${countAfter} total.`,
+            'success'
+        );
     } catch(e) { showAlert('Import failed: ' + e.message, 'error'); }
     await loadFromDatabase();
 }
@@ -634,6 +1019,7 @@ async function doConfirmedImport(payload) {
 function cancelDupe() {
     dupeCheckData = null; dupeResolutions = {}; pendingFile = null;
     showScreen('uploadScreen');
+    refreshDbCount();
 }
 
 // ── DB load ───────────────────────────────────────
@@ -641,25 +1027,44 @@ async function loadFromDatabase() {
     if (!dbOnline) { showAlert('Backend is offline.','error'); return; }
     showProgress('Loading from database…');
     try {
-        const rows = await (await fetch(`${API}/houses`)).json();
+        const resp = await fetch(`${API}/houses`);
+        const data = await resp.json();
+        // Support both old (array) and new (paginated object) response formats
+        const rows = Array.isArray(data) ? data : (data.items || []);
         if (!rows.length) { hideProgress(); showAlert('Database is empty.','info'); return; }
         boundaries = rows.map(r => ({
             id:r.id, label:r.label,
             coords:r.coords,
-            dbId:r.id, dirty:false,
+            dbId:r.id, dirty:false, mask_dirty:false,
             point_id:    r.point_id    || '',
             cluster_id:  r.cluster_id  || '',
             plot_index:  r.plot_index  ?? null,
+            // SAM pipeline
+            sam_status:  r.sam_status  || null,
+            sam_score:   r.sam_score   ?? null,
             sam_area_m2: r.sam_area_m2 ?? null,
             sam_mask_wkt: r.sam_mask_wkt || '',
             mask_coords: r.sam_mask_wkt ? parseWKT(r.sam_mask_wkt) : null,
-            contracted_2023: r.contracted_2023 || null,
-            contracted_2024: r.contracted_2024 || null,
-            contracted_2025: r.contracted_2025 || null,
+            original_coords:      r.polygon_wkt_original    ? parseWKT(r.polygon_wkt_original)    : null,
+            original_mask_coords: r.sam_mask_wkt_original   ? parseWKT(r.sam_mask_wkt_original)   : null,
+            sam_iou:       r.sam_iou       ?? null,
+            covered_pct:   r.covered_pct   ?? null,
+            sam_bbox_wkt:  r.sam_bbox_wkt  || '',
+            sam_mask_path: r.sam_mask_path || '',
+            sam_rotation_deg: r.sam_rotation_deg ?? null,
+            sam_error:     r.sam_error     || null,
+            plot_area_m2:  r.plot_area_m2  ?? null,
+            // Traceability
+            boundary_edited: r.boundary_edited || 0,
+            mask_edited:     r.mask_edited     || 0,
+            // Construction status
+            constructed_2023: r.constructed_2023 || null,
+            constructed_2024: r.constructed_2024 || null,
+            constructed_2025: r.constructed_2025 || null,
             heights: {
-                2025: { m: r.height_m_2025, cls: r.height_class_2025 },
-                2024: { m: r.height_m_2024, cls: r.height_class_2024 },
-                2023: { m: r.height_m_2023, cls: r.height_class_2023 },
+                2025: { m: r.height_m_2025, cls: r.height_class_2025, src: r.height_src_2025 },
+                2024: { m: r.height_m_2024, cls: r.height_class_2024, src: r.height_src_2024 },
+                2023: { m: r.height_m_2023, cls: r.height_class_2023, src: r.height_src_2023 },
             }
         }));
         await launchGallery();
@@ -707,30 +1112,53 @@ function parseCSVText(text) {
         const ci = (name) => cols.indexOf(name);
         const getStr = (vals, name) => { const idx = ci(name); return idx >= 0 ? (vals[idx]||'').trim() : ''; };
         const getNum = (vals, name) => { const v = getStr(vals, name); return v ? parseFloat(v) : null; };
+        // Normalise constructed status — only accept the two valid string values
+        const getConstructed = (vals, name) => {
+            const v = getStr(vals, name).toLowerCase();
+            return (v === 'constructed' || v === 'non_constructed') ? v : null;
+        };
         lines.slice(1).forEach((line, i) => {
             const vals = parseCSVRow(line);
             const wkt = getStr(vals, 'polygon_wkt');
             const coords = parseWKT(wkt);
             if (!coords) return;
-            const pointId = getStr(vals, 'point_id');
-            const plotIdx = getStr(vals, 'plot_index');
-            const label = pointId ? `${pointId} #${plotIdx}` : `House ${i+1}`;
+            const pointId  = getStr(vals, 'point_id');
+            const plotIdx  = getStr(vals, 'plot_index');
+            const csvLabel = getStr(vals, 'label');
+            // Prefer label stored in CSV (round-trip), fall back to computed
+            const label = csvLabel || (pointId ? `${pointId} #${plotIdx}` : `House ${i+1}`);
             const maskWkt = getStr(vals, 'sam_mask_wkt');
             houses.push({
-                id: null, label, coords, dbId: null, dirty: false,
+                id: null, label, coords, dbId: null, dirty: false, mask_dirty: false,
                 point_id:    pointId,
                 cluster_id:  getStr(vals, 'cluster_id'),
                 plot_index:  plotIdx !== '' ? parseInt(plotIdx) : null,
+                // SAM pipeline
+                sam_status:  getStr(vals, 'sam_status') || null,
+                sam_score:   getNum(vals, 'sam_score'),
                 sam_area_m2: getNum(vals, 'sam_area_m2'),
-                sam_mask_wkt: maskWkt,
+                sam_mask_wkt: maskWkt || '',
                 mask_coords: maskWkt ? parseWKT(maskWkt) : null,
-                contracted_2023: null,
-                contracted_2024: null,
-                contracted_2025: null,
+                original_coords:      (() => { const w = getStr(vals, 'polygon_wkt_original');      return w ? parseWKT(w) : null; })(),
+                original_mask_coords: (() => { const w = getStr(vals, 'sam_mask_wkt_original');     return w ? parseWKT(w) : null; })(),
+                sam_iou:        getNum(vals, 'sam_iou'),
+                covered_pct:    getNum(vals, 'covered_pct'),
+                sam_bbox_wkt:   getStr(vals, 'sam_bbox_wkt') || '',
+                sam_mask_path:  getStr(vals, 'sam_mask_path') || '',
+                sam_rotation_deg: getNum(vals, 'sam_rotation_deg'),
+                sam_error:      getStr(vals, 'sam_error') || null,
+                plot_area_m2:   getNum(vals, 'plot_area_m2'),
+                // Traceability flags (carry over from re-imported export)
+                boundary_edited: parseInt(getStr(vals, 'boundary_edited')) || 0,
+                mask_edited:     parseInt(getStr(vals, 'mask_edited'))     || 0,
+                // Construction status
+                constructed_2023: getConstructed(vals, 'constructed_2023'),
+                constructed_2024: getConstructed(vals, 'constructed_2024'),
+                constructed_2025: getConstructed(vals, 'constructed_2025'),
                 heights: {
-                    2025: { m: getNum(vals, 'height_m_2025'), cls: getStr(vals, 'height_class_2025') },
-                    2024: { m: getNum(vals, 'height_m_2024'), cls: getStr(vals, 'height_class_2024') },
-                    2023: { m: getNum(vals, 'height_m_2023'), cls: getStr(vals, 'height_class_2023') },
+                    2025: { m: getNum(vals, 'height_m_2025'), cls: getStr(vals, 'height_class_2025') || null, src: getStr(vals, 'height_src_2025') || null },
+                    2024: { m: getNum(vals, 'height_m_2024'), cls: getStr(vals, 'height_class_2024') || null, src: getStr(vals, 'height_src_2024') || null },
+                    2023: { m: getNum(vals, 'height_m_2023'), cls: getStr(vals, 'height_class_2023') || null, src: getStr(vals, 'height_src_2023') || null },
                 }
             });
         });
@@ -771,8 +1199,29 @@ function buildMap(divId, house, year, isEditSource) {
         {maxZoom:21, maxNativeZoom:19, attribution:`© Esri Wayback ${conf.label}`}).addTo(map);
 
     function redraw() {
-        if (map._polygon)  map.removeLayer(map._polygon);
-        if (map._maskPoly) map.removeLayer(map._maskPoly);
+        // Remove current layers
+        if (map._polygon)         map.removeLayer(map._polygon);
+        if (map._maskPoly)        map.removeLayer(map._maskPoly);
+        if (map._origBoundaryPoly){ map.removeLayer(map._origBoundaryPoly); map._origBoundaryPoly = null; }
+        if (map._origMaskPoly)    { map.removeLayer(map._origMaskPoly);     map._origMaskPoly     = null; }
+
+        // ── Ghost overlays (original before edits) ───────────────────
+        // Original boundary ghost (shown when boundary was manually moved)
+        if (house.boundary_edited && house.original_coords && house.original_coords.length >= 3) {
+            map._origBoundaryPoly = L.polygon(house.original_coords, {
+                color:'#888888', weight:1.5, fillOpacity:0.06,
+                dashArray:'6,5', opacity:0.5, interactive:false
+            }).addTo(map);
+        }
+        // Original mask ghost (shown when mask was manually moved)
+        if (house.mask_edited && house.original_mask_coords && house.original_mask_coords.length >= 3) {
+            map._origMaskPoly = L.polygon(house.original_mask_coords, {
+                color:'#888888', weight:1.5, fillColor:'#888888',
+                fillOpacity:0.1, opacity:0.45, interactive:false
+            }).addTo(map);
+        }
+
+        // ── Current polygons (drawn on top of ghosts) ─────────────────
         const hasMask = house.mask_coords && house.mask_coords.length >= 3;
         if (hasMask) {
             // Grid cell boundary — thin dashed outline only
@@ -840,26 +1289,72 @@ function deactivateEditTool(map) {
 }
 
 // ── Point-drag tool ───────────────────────────────
+function _boundaryCentroid(coords) {
+    const n = coords.length;
+    return [coords.reduce((s,c) => s+c[0], 0)/n, coords.reduce((s,c) => s+c[1], 0)/n];
+}
+
 function setupPointHandles(map) {
     const house = map._houseRef;
     const color = map._color;
     if (map._corners) map._corners.forEach(cm => { try { map.removeLayer(cm); } catch{} });
+    if (map._boundaryCenterHandle) { try { map.removeLayer(map._boundaryCenterHandle); } catch{} map._boundaryCenterHandle = null; }
+
     map._corners = house.coords.map((c, ci) => {
         const m = L.marker(c, {draggable:true, icon:L.divIcon({className:'', html:`<div style="width:20px;height:20px;border-radius:50%;background:${color};opacity:0.85;cursor:grab;border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 10px rgba(0,0,0,.5);"></div>`, iconSize:[20,20], iconAnchor:[10,10]})});
         m._ci = ci; m.addTo(map);
         m.on('drag', e => {
             const ll = e.target.getLatLng();
             house.coords[ci] = [ll.lat, ll.lng];
+            // Keep center handle in sync
+            if (map._boundaryCenterHandle)
+                map._boundaryCenterHandle.setLatLng(_boundaryCentroid(house.coords));
             map._redraw();
             allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
             updateLabelCoords(house);
+            updatePolygonArea(house);
             house.dirty = true; updateDirtyUI(house);
         });
         return m;
     });
+
+    // ── Centroid handle — drag to translate entire boundary ───────────
+    let _prevBoundaryDragLL = null;
+    const centerHandle = L.marker(_boundaryCentroid(house.coords), {
+        draggable: true,
+        zIndexOffset: 2000,
+        icon: L.divIcon({
+            className: '',
+            html: `<div style="width:28px;height:28px;border-radius:6px;background:rgba(10,12,15,.88);cursor:move;border:2px solid ${color};box-shadow:0 0 14px rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:${color};">✥</div>`,
+            iconSize: [28,28], iconAnchor: [14,14]
+        })
+    });
+    centerHandle.on('dragstart', e => { _prevBoundaryDragLL = e.target.getLatLng(); });
+    centerHandle.on('drag', e => {
+        const newLL = e.target.getLatLng();
+        if (!_prevBoundaryDragLL) { _prevBoundaryDragLL = newLL; return; }
+        const dlat = newLL.lat - _prevBoundaryDragLL.lat;
+        const dlng = newLL.lng - _prevBoundaryDragLL.lng;
+        _prevBoundaryDragLL = newLL;
+        // Translate every boundary point by the same delta
+        house.coords = house.coords.map(c => [c[0]+dlat, c[1]+dlng]);
+        // Keep corner handles in sync
+        map._corners.forEach((m, ci) => m.setLatLng(house.coords[ci]));
+        map._redraw();
+        allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
+        updateLabelCoords(house);
+        updatePolygonArea(house);
+        house.dirty = true; updateDirtyUI(house);
+    });
+    centerHandle.addTo(map);
+    map._boundaryCenterHandle = centerHandle;
 }
 
 function cleanupPointHandles(map) {
+    if (map._boundaryCenterHandle) {
+        try { map.removeLayer(map._boundaryCenterHandle); } catch{}
+        map._boundaryCenterHandle = null;
+    }
     if (map._corners) {
         map._corners.forEach(cm => { try { map.removeLayer(cm); } catch{} });
         map._corners = map._houseRef.coords.map((c, ci) => {
@@ -941,6 +1436,7 @@ function applyBrush(map, house, pts) {
         map._redraw();
         allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
         updateLabelCoords(house);
+        updatePolygonArea(house);
         house.dirty = true; updateDirtyUI(house);
     } catch(err) { console.warn('Brush error:', err); }
 }
@@ -981,34 +1477,229 @@ function attachSync(map) {
     map._sync = function() { map._redraw(); };
 }
 
+// ── Mask edit mode ────────────────────────────────
+function _maskCentroid(coords) {
+    const n = coords.length;
+    return [coords.reduce((s,c) => s+c[0], 0)/n, coords.reduce((s,c) => s+c[1], 0)/n];
+}
+
+function _maskCoordsToWkt(coords) {
+    const pts = [...coords, coords[0]];
+    return `POLYGON ((${pts.map(p => `${p[1].toFixed(10)} ${p[0].toFixed(10)}`).join(', ')}))`;
+}
+
+function setupMaskHandles(map) {
+    const house = map._houseRef;
+    const color = map._color;
+    if (!house.mask_coords || !house.mask_coords.length) return;
+    map.dragging.enable();
+    map.scrollWheelZoom.enable();
+
+    if (map._maskCorners) map._maskCorners.forEach(cm => { try { map.removeLayer(cm); } catch{} });
+    if (map._maskCenterHandle) { try { map.removeLayer(map._maskCenterHandle); } catch{} map._maskCenterHandle = null; }
+
+    // ── Vertex handles (individual point drag) ────────────────────────
+    map._maskCorners = house.mask_coords.map((c, ci) => {
+        const m = L.marker(c, {
+            draggable: true,
+            icon: L.divIcon({
+                className: '',
+                html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};opacity:.9;cursor:grab;border:2px solid rgba(255,255,255,.75);box-shadow:0 0 8px rgba(0,0,0,.5);"></div>`,
+                iconSize: [14,14], iconAnchor: [7,7]
+            })
+        });
+        m._ci = ci;
+        m.addTo(map);
+        m.on('drag', e => {
+            const ll = e.target.getLatLng();
+            house.mask_coords[ci] = [ll.lat, ll.lng];
+            house.sam_mask_wkt = _maskCoordsToWkt(house.mask_coords);
+            // Keep center handle in sync
+            if (map._maskCenterHandle) {
+                map._maskCenterHandle.setLatLng(_maskCentroid(house.mask_coords));
+            }
+            map._redraw();
+            allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
+            house.mask_dirty = true;
+        });
+        return m;
+    });
+
+    // ── Centroid handle (whole-polygon translate) ─────────────────────
+    // Dragging this handle moves the entire mask polygon as a unit
+    let _prevDragLatLng = null;
+    const centerHandle = L.marker(_maskCentroid(house.mask_coords), {
+        draggable: true,
+        zIndexOffset: 1000,
+        icon: L.divIcon({
+            className: '',
+            html: `<div style="width:26px;height:26px;border-radius:5px;background:rgba(10,12,15,.85);cursor:move;border:2px solid ${color};box-shadow:0 0 12px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;color:${color};">⊕</div>`,
+            iconSize: [26,26], iconAnchor: [13,13]
+        })
+    });
+    centerHandle.on('dragstart', e => { _prevDragLatLng = e.target.getLatLng(); });
+    centerHandle.on('drag', e => {
+        const newLL = e.target.getLatLng();
+        if (!_prevDragLatLng) { _prevDragLatLng = newLL; return; }
+        const dlat = newLL.lat - _prevDragLatLng.lat;
+        const dlng = newLL.lng - _prevDragLatLng.lng;
+        _prevDragLatLng = newLL;
+        // Translate every mask point by the same delta
+        house.mask_coords = house.mask_coords.map(c => [c[0] + dlat, c[1] + dlng]);
+        // Keep vertex handles in sync
+        map._maskCorners.forEach((m, ci) => m.setLatLng(house.mask_coords[ci]));
+        house.sam_mask_wkt = _maskCoordsToWkt(house.mask_coords);
+        map._redraw();
+        allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
+        house.mask_dirty = true;
+    });
+    centerHandle.addTo(map);
+    map._maskCenterHandle = centerHandle;
+}
+
+function cleanupMaskHandles(map) {
+    if (map._maskCorners) {
+        map._maskCorners.forEach(cm => { try { map.removeLayer(cm); } catch{} });
+        map._maskCorners = null;
+    }
+    if (map._maskCenterHandle) {
+        try { map.removeLayer(map._maskCenterHandle); } catch{}
+        map._maskCenterHandle = null;
+    }
+    map.dragging.disable();
+    map.scrollWheelZoom.disable();
+}
+
+function toggleMaskEdit(houseId) {
+    const house    = boundaries.find(h => h.id === houseId);
+    const editMap  = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!editMap || !house.mask_coords || !house.mask_coords.length) return;
+
+    const on = !editMap._maskEditMode;
+
+    // Boundary edit and mask edit are mutually exclusive
+    if (on && editMap._editMode) {
+        setEditMode(editMap, false);
+        const editBtn  = document.getElementById(`editbtn-${houseId}`);
+        const hintDiv  = document.getElementById(`hint-${houseId}`);
+        if (editBtn) { editBtn.textContent = '✎ Edit'; editBtn.classList.remove('active'); }
+        if (hintDiv) hintDiv.style.display = 'none';
+    }
+
+    editMap._maskEditMode = on;
+    const btn = document.getElementById(`maskeditbtn-${houseId}`);
+    if (btn) { btn.classList.toggle('active', on); btn.textContent = on ? '✓ Done Mask' : '⬟ Mask'; }
+
+    if (on) {
+        setupMaskHandles(editMap);
+    } else {
+        cleanupMaskHandles(editMap);
+        if (house.mask_dirty) {
+            if (dbOnline && house.dbId) {
+                saveMaskToDb(houseId);
+            } else if (!dbOnline) {
+                showToast('Mask updated locally — backend offline, not saved to DB', 'warn');
+                house.mask_dirty = false;
+            }
+        }
+    }
+}
+
+async function saveMaskToDb(houseId) {
+    const house = boundaries.find(h => h.id === houseId);
+    if (!house || !house.dbId || !dbOnline || !house.mask_coords) return;
+    const pts = [...house.mask_coords, house.mask_coords[0]];
+    const wkt = `POLYGON ((${pts.map(p => `${p[1].toFixed(10)} ${p[0].toFixed(10)}`).join(', ')}))`;
+    house.sam_mask_wkt = wkt;
+    house.mask_dirty   = false;
+    try {
+        await fetch(`${API}/houses/${house.dbId}/meta`, {
+            method: 'PATCH', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({field: 'sam_mask_wkt', value: wkt})
+        });
+        showToast(`Mask saved ✓`, 'success');
+    } catch(e) {
+        house.mask_dirty = true;
+        showToast(`Mask save failed: ${e.message}`, 'error');
+    }
+}
+
 // ── Gallery ───────────────────────────────────────
 function calcCenter(coords) {
     const n = coords.length;
     return { lat:(coords.reduce((s,c)=>s+c[0],0)/n).toFixed(6), lon:(coords.reduce((s,c)=>s+c[1],0)/n).toFixed(6) };
 }
 
-function buildGallery() {
-    const body = document.getElementById('galleryBody');
-    body.innerHTML='';
-    document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
-    YEARS.forEach(y => { const el=document.getElementById(`src-${String(y).slice(-2)}`); if(el&&waybackConf[y]) el.textContent=waybackConf[y].label; });
+// Recalculate polygon area (m²) via Turf and push to all area inputs + house memory
+function updatePolygonArea(house) {
+    if (!house.coords || house.coords.length < 3) return;
+    try {
+        const ring = [...house.coords.map(c => [c[1], c[0]]), [house.coords[0][1], house.coords[0][0]]];
+        const areaSqM = turf.area(turf.polygon([ring]));
+        house.sam_area_m2 = parseFloat(areaSqM.toFixed(2));
+        [2025, 2024, 2023].forEach(y => {
+            const el = document.getElementById(`area-${house.id}-${y}`);
+            if (el) el.value = house.sam_area_m2.toFixed(1);
+        });
+    } catch(e) { console.warn('Area calc failed:', e); }
+}
 
-    boundaries.forEach((house,hIdx) => {
-        if(!house.id) house.id=hIdx+1;
-        const center=calcCenter(house.coords);
-        const row=document.createElement('div');
-        row.className='house-row'; row.id=`row-${house.id}`;
-        row.style.animationDelay=`${hIdx*.04}s`;
-        const dbStatus=house.dbId?`<span class="status-saved">● saved</span>`:`<span class="status-unsaved">○ not in DB</span>`;
-        const pidLine = house.point_id ? `<div class="hl-pid">${house.point_id}</div>` : '';
-        const metaLine = house.sam_area_m2 != null ? `<div class="hl-meta">${house.sam_area_m2.toFixed(1)} m²</div>` : '';
-        const label=document.createElement('div');
-        label.className='house-label';
-        label.innerHTML=`
-            <div class="hl-num">#${String(house.id).padStart(2,'0')}</div>
+// Lazy map initializer — initialises Leaflet only when the div scrolls into view
+function initMapObserver() {
+    if (mapLazyObserver) mapLazyObserver.disconnect();
+    mapLazyObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const el = entry.target;
+            if (el._mapBuilt) return;
+            el._mapBuilt = true;
+            mapLazyObserver.unobserve(el);
+            const d = el._mapData;
+            if (!d) return;
+            requestAnimationFrame(() => {
+                const map = buildMap(el.id, d.house, d.year, d.isFirst);
+                map._divId = el.id;
+                attachSync(map);
+                const ldr = document.getElementById(`ldr-${el.id}`);
+                if (ldr) { ldr.style.opacity = '0'; setTimeout(() => ldr.remove(), 400); }
+            });
+        });
+    }, { rootMargin: '500px 0px' }); // pre-load 500px before entering view
+}
+
+// Render a batch of house rows (DOM only — maps are lazy)
+function renderGalleryBatch(startIdx, batchSize) {
+    const body = document.getElementById('galleryBody');
+    const end  = Math.min(startIdx + batchSize, boundaries.length);
+    for (let hIdx = startIdx; hIdx < end; hIdx++) {
+        const house = boundaries[hIdx];
+        if (!house.id) house.id = hIdx + 1;
+        const center   = calcCenter(house.coords);
+        const row      = document.createElement('div');
+        row.className  = 'house-row';
+        row.id         = `row-${house.id}`;
+        row.style.animationDelay = `${(hIdx - startIdx) * 0.04}s`;
+        const dbStatus  = house.dbId ? `<span class="status-saved">● saved</span>` : `<span class="status-unsaved">○ not in DB</span>`;
+        const pidLine   = house.point_id  ? `<div class="hl-pid">${house.point_id}</div>` : '';
+        const metaLine  = house.sam_area_m2 != null ? `<div class="hl-meta">${house.sam_area_m2.toFixed(1)} m²</div>` : '';
+        const editBadges = [
+            house.boundary_edited ? `<span style="font-family:'Space Mono',monospace;font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,179,71,.12);border:1px solid rgba(255,179,71,.35);color:#ffb347;">▲ bnd edited</span>` : '',
+            house.mask_edited     ? `<span style="font-family:'Space Mono',monospace;font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(191,95,255,.12);border:1px solid rgba(191,95,255,.35);color:var(--c25);">▲ mask edited</span>` : '',
+        ].filter(Boolean).join('');
+        const editBadgeLine = editBadges ? `<div style="display:flex;flex-direction:column;gap:3px;margin-top:3px;">${editBadges}</div>` : '';
+        const label     = document.createElement('div');
+        label.className = 'house-label';
+        label.innerHTML = `
+            <div class="hl-checkbox-row">
+                <input type="checkbox" class="house-checkbox" id="chk-${house.id}"
+                    onchange="toggleHouseSelection(${house.id}, this.checked)"
+                    ${selectedHouseIds.has(house.id) ? 'checked' : ''}>
+                <label class="hl-checkbox-label" for="chk-${house.id}">#${String(house.id).padStart(2,'0')}</label>
+            </div>
             ${pidLine}
             <div class="hl-name">${house.label||''}</div>
             ${metaLine}
+            ${editBadgeLine}
             <div class="hl-coords" id="coords-${house.id}">${center.lat}<br>${center.lon}</div>
             <div class="hl-actions">
                 <div class="hl-btn hl-btn-save" id="save-btn-${house.id}" onclick="saveToDb(${house.id})">💾 Save to DB</div>
@@ -1017,33 +1708,34 @@ function buildGallery() {
             <div class="hl-db-status" id="dbstatus-${house.id}">${dbStatus}</div>
         `;
         row.appendChild(label);
-        YEARS.forEach((year,yIdx) => {
-            const mapId=`lmap-h${house.id}-y${year}`;
-            const suffix=String(year).slice(-2);
-            const conf=waybackConf[year];
-            const isFirst=yIdx===0;
+        YEARS.forEach((year, yIdx) => {
+            const mapId   = `lmap-h${house.id}-y${year}`;
+            const suffix  = String(year).slice(-2);
+            const conf    = waybackConf[year];
+            const isFirst = yIdx === 0;
             const hData   = house.heights && house.heights[year];
-            const cVal    = house[`contracted_${year}`];
-            const cCls    = cVal === 'contracted' ? 'ctag-contracted' : cVal === 'non_contracted' ? 'ctag-non-contracted' : 'ctag-unset';
-            const cTxt    = cVal === 'contracted' ? '● Contracted' : cVal === 'non_contracted' ? '○ Non-Contracted' : '— Set Status';
+            const cVal    = house[`constructed_${year}`];
+            const cCls    = cVal === 'constructed' ? 'ctag-constructed' : cVal === 'non_constructed' ? 'ctag-non-constructed' : 'ctag-unset';
+            const cTxt    = cVal === 'constructed' ? '● constructed' : cVal === 'non_constructed' ? '○ Non-constructed' : '— Set Status';
             const areaVal = house.sam_area_m2 != null ? house.sam_area_m2.toFixed(1) : '';
             const areaStr = `<input class="area-input" id="area-${house.id}-${year}" value="${areaVal}" placeholder="m²" onblur="saveArea(${house.id},this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
             const hcls    = hData && hData.cls;
             const hclsTag = `<input class="hcls-input" id="hcls-${house.id}-${year}" value="${hcls||''}" placeholder="height class" onblur="saveHeightClass(${house.id},${year},this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
             const heightStrip = `<div class="year-info">
                 <div class="height-strip hs-${suffix}">${hclsTag}${areaStr}</div>
-                <div class="contracted-row">
-                    <span class="contracted-tag ${cCls}" id="ctag-${house.id}-${year}" onclick="toggleContracted(${house.id},${year})">${cTxt}</span>
+                <div class="constructed-row">
+                    <span class="constructed-tag ${cCls}" id="ctag-${house.id}-${year}" onclick="toggleconstructed(${house.id},${year})">${cTxt}</span>
                 </div>
             </div>`;
-            const cell=document.createElement('div');
-            cell.className=`map-cell map-cell-${suffix}`;
-            cell.innerHTML=`
+            const cell     = document.createElement('div');
+            cell.className = `map-cell map-cell-${suffix}`;
+            cell.innerHTML = `
                 <div class="map-wrapper">
                     <div id="${mapId}" class="lmap"></div>
                     <div class="map-badge ${BCLASS[year]}">${year}</div>
                     <div class="src-badge" id="src-badge-${mapId}">${conf.label}</div>
-                    ${isFirst?`<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button>
+                    ${isFirst ? `<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button>
+                    ${house.mask_coords ? `<button class="mask-edit-btn" id="maskeditbtn-${house.id}" onclick="toggleMaskEdit(${house.id})">⬟ Mask</button>` : ''}
                     <div class="brush-toolbar" id="hint-${house.id}">
                         <div class="tool-row">
                             <button class="brush-btn tool-btn active" id="tool-point-${house.id}" onclick="setEditTool(${house.id},'point')">◈ Points</button>
@@ -1056,28 +1748,58 @@ function buildGallery() {
                             <span class="brush-size-label" id="brush-size-${house.id}">3m</span>
                             <button class="brush-btn brush-size-btn" onclick="adjustBrushSize(${house.id},+1)">+</button>
                         </div>
-                    </div>`:''}
+                    </div>` : ''}
                     <div class="map-loader" id="ldr-${mapId}"><div class="spinner"></div></div>
                 </div>
                 ${heightStrip}`;
             row.appendChild(cell);
         });
         body.appendChild(row);
-    });
-
-    showScreen('galleryScreen');
-
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-        boundaries.forEach(house => {
-            YEARS.forEach((year,yIdx) => {
-                const mapId=`lmap-h${house.id}-y${year}`;
-                const map=buildMap(mapId,house,year,yIdx===0);
-                map._divId = mapId;
-                attachSync(map);
-                setTimeout(() => { const ldr=document.getElementById(`ldr-${mapId}`); if(ldr){ldr.style.opacity='0';setTimeout(()=>ldr.remove(),400);} },2000);
-            });
+        // Register map divs with IntersectionObserver for lazy Leaflet init
+        YEARS.forEach((year, yIdx) => {
+            const mapEl = document.getElementById(`lmap-h${house.id}-y${year}`);
+            if (mapEl && mapLazyObserver) {
+                mapEl._mapData = { house, year, isFirst: yIdx === 0 };
+                mapLazyObserver.observe(mapEl);
+            }
         });
-    }));
+    }
+}
+
+function buildGallery() {
+    const body = document.getElementById('galleryBody');
+    body.innerHTML = '';
+    currentGalleryPage = 0;
+    initMapObserver();
+    document.getElementById('houseCount').textContent = `${boundaries.length} house${boundaries.length !== 1 ? 's' : ''} loaded`;
+    YEARS.forEach(y => {
+        const el = document.getElementById(`src-${String(y).slice(-2)}`);
+        if (el && waybackConf[y]) el.textContent = waybackConf[y].label;
+    });
+    renderGalleryBatch(0, GALLERY_PAGE_SIZE);
+    updateLoadMoreButton();
+    showScreen('galleryScreen');
+}
+
+function loadMoreGallery() {
+    currentGalleryPage++;
+    renderGalleryBatch(currentGalleryPage * GALLERY_PAGE_SIZE, GALLERY_PAGE_SIZE);
+    updateLoadMoreButton();
+}
+
+function updateLoadMoreButton() {
+    const bar       = document.getElementById('loadMoreBar');
+    const btn       = document.getElementById('loadMoreBtn');
+    const countEl   = document.getElementById('loadMoreCount');
+    const rendered  = Math.min((currentGalleryPage + 1) * GALLERY_PAGE_SIZE, boundaries.length);
+    const remaining = boundaries.length - rendered;
+    if (remaining > 0) {
+        bar.style.display = 'block';
+        btn.textContent   = `Load ${Math.min(remaining, GALLERY_PAGE_SIZE)} More Houses`;
+        countEl.textContent = `${rendered} of ${boundaries.length} shown`;
+    } else {
+        bar.style.display = 'none';
+    }
 }
 
 // ── Edit mode ─────────────────────────────────────
@@ -1151,6 +1873,16 @@ async function saveToDb(houseId) {
 
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
 
+        // Persist auto-computed area alongside coord update
+        if (house.sam_area_m2 != null) {
+            try {
+                await fetch(`${API}/houses/${house.dbId}/meta`, {
+                    method:'PATCH', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({field:'sam_area_m2', value: String(house.sam_area_m2)})
+                });
+            } catch {}
+        }
+
         house.dirty=false;
         updateDirtyUI(house);
         showToast(`House #${houseId} saved ✓`, 'success');
@@ -1169,7 +1901,104 @@ async function deleteHouse(houseId) {
     boundaries=boundaries.filter(h=>h.id!==houseId);
     allMaps=allMaps.filter(m=>{ if(m._houseRef===house){try{m.remove()}catch{} return false;} return true; });
     const row=document.getElementById(`row-${houseId}`); if(row) row.remove();
+    selectedHouseIds.delete(houseId);
+    updateBulkBar();
     document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
+}
+
+// ── Bulk select / delete ───────────────────────────
+function toggleHouseSelection(houseId, checked) {
+    if (checked) {
+        selectedHouseIds.add(houseId);
+    } else {
+        selectedHouseIds.delete(houseId);
+    }
+    const row = document.getElementById(`row-${houseId}`);
+    if (row) row.classList.toggle('bulk-selected', checked);
+    updateBulkBar();
+    syncSelectAllCheckbox();
+}
+
+function updateBulkBar() {
+    const bar = document.getElementById('bulkActionBar');
+    const countEl = document.getElementById('bulkCount');
+    const n = selectedHouseIds.size;
+    if (n > 0) {
+        bar.classList.add('visible');
+        countEl.textContent = n;
+    } else {
+        bar.classList.remove('visible');
+    }
+}
+
+function syncSelectAllCheckbox() {
+    const chk = document.getElementById('selectAllChk');
+    const lbl = document.getElementById('selectAllLabel');
+    if (!chk) return;
+    const rendered = boundaries.filter(h => document.getElementById(`row-${h.id}`));
+    const allSelected = rendered.length > 0 && rendered.every(h => selectedHouseIds.has(h.id));
+    const someSelected = rendered.some(h => selectedHouseIds.has(h.id));
+    chk.checked = allSelected;
+    chk.indeterminate = someSelected && !allSelected;
+    if (lbl) lbl.textContent = allSelected ? 'Deselect All' : 'Select All';
+}
+
+function selectAllChkChanged(checked) {
+    boundaries.forEach(h => {
+        if (!document.getElementById(`row-${h.id}`)) return;
+        if (checked) {
+            selectedHouseIds.add(h.id);
+        } else {
+            selectedHouseIds.delete(h.id);
+        }
+        const chk = document.getElementById(`chk-${h.id}`);
+        if (chk) chk.checked = checked;
+        const row = document.getElementById(`row-${h.id}`);
+        if (row) row.classList.toggle('bulk-selected', checked);
+    });
+    updateBulkBar();
+    syncSelectAllCheckbox();
+}
+
+function deselectAllHouses() {
+    selectedHouseIds.forEach(houseId => {
+        const chk = document.getElementById(`chk-${houseId}`);
+        if (chk) chk.checked = false;
+        const row = document.getElementById(`row-${houseId}`);
+        if (row) row.classList.remove('bulk-selected');
+    });
+    selectedHouseIds.clear();
+    updateBulkBar();
+    syncSelectAllCheckbox();
+}
+
+async function bulkDeleteSelected() {
+    const n = selectedHouseIds.size;
+    if (n === 0) return;
+    if (!confirm(`Permanently delete ${n} selected house${n !== 1 ? 's' : ''}?\n\nThis cannot be undone.`)) return;
+
+    const ids = [...selectedHouseIds];
+    let deleted = 0;
+    for (const houseId of ids) {
+        const house = boundaries.find(h => h.id === houseId);
+        if (!house) continue;
+        if (house.dbId && dbOnline) {
+            try { await fetch(`${API}/houses/${house.dbId}`, { method: 'DELETE' }); } catch {}
+        }
+        boundaries = boundaries.filter(h => h.id !== houseId);
+        allMaps = allMaps.filter(m => {
+            if (m._houseRef === house) { try { m.remove(); } catch {} return false; }
+            return true;
+        });
+        const row = document.getElementById(`row-${houseId}`);
+        if (row) row.remove();
+        selectedHouseIds.delete(houseId);
+        deleted++;
+    }
+    updateBulkBar();
+    syncSelectAllCheckbox();
+    document.getElementById('houseCount').textContent = `${boundaries.length} house${boundaries.length !== 1 ? 's' : ''} loaded`;
+    showToast(`Deleted ${deleted} house${deleted !== 1 ? 's' : ''} ✓`, 'success');
 }
 
 
@@ -1216,36 +2045,55 @@ async function saveHeightClass(houseId, year, value) {
     }
 }
 
-// ── Contracted status ─────────────────────────────
-function contractedNextState(current) {
-    if (!current)                  return 'contracted';
-    if (current === 'contracted')  return 'non_contracted';
-    return null;   // non_contracted → unset
+// ── constructed status ─────────────────────────────
+function constructedNextState(current) {
+    if (!current)                  return 'constructed';
+    if (current === 'constructed')  return 'non_constructed';
+    return null;   // non_constructed → unset
 }
 
-function updateContractedUI(house, year) {
+function updateconstructedUI(house, year) {
     const el = document.getElementById(`ctag-${house.id}-${year}`);
     if (!el) return;
-    const val = house[`contracted_${year}`];
-    if (val === 'contracted') {
-        el.className = 'contracted-tag ctag-contracted';
-        el.textContent = '● Contracted';
-    } else if (val === 'non_contracted') {
-        el.className = 'contracted-tag ctag-non-contracted';
-        el.textContent = '○ Non-Contracted';
+    const val = house[`constructed_${year}`];
+    if (val === 'constructed') {
+        el.className = 'constructed-tag ctag-constructed';
+        el.textContent = '● constructed';
+    } else if (val === 'non_constructed') {
+        el.className = 'constructed-tag ctag-non-constructed';
+        el.textContent = '○ Non-constructed';
     } else {
-        el.className = 'contracted-tag ctag-unset';
+        el.className = 'constructed-tag ctag-unset';
         el.textContent = '— Set Status';
     }
 }
 
-async function toggleContracted(houseId, year) {
+async function toggleconstructed(houseId, year) {
     const house = boundaries.find(h => h.id === houseId);
     if (!house) return;
-    const key  = `contracted_${year}`;
-    const next = contractedNextState(house[key]);
+    const key  = `constructed_${year}`;
+    const next = constructedNextState(house[key]);
     house[key] = next;
-    updateContractedUI(house, year);
+    updateconstructedUI(house, year);
+
+    // Auto-zero height class & metres when status becomes non-constructed
+    if (next === 'non_constructed') {
+        if (!house.heights) house.heights = {};
+        if (!house.heights[year]) house.heights[year] = { m: null, cls: null };
+        house.heights[year].cls = '0';
+        house.heights[year].m   = 0;
+        const hclsEl = document.getElementById(`hcls-${houseId}-${year}`);
+        if (hclsEl) hclsEl.value = '0';
+        if (dbOnline && house.dbId) {
+            try {
+                await fetch(`${API}/houses/${house.dbId}/meta`, {
+                    method: 'PATCH', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({field: `height_class_${year}`, value: '0'})
+                });
+            } catch {}
+        }
+    }
+
     if (dbOnline && house.dbId) {
         try {
             await fetch(`${API}/houses/${house.dbId}/meta`, {
@@ -1259,10 +2107,63 @@ async function toggleContracted(houseId, year) {
 
 // ── Export ────────────────────────────────────────
 function exportCSV() {
-    if(dbOnline) { window.open(`${API}/export/csv`,'_blank'); return; }
-    const rows=boundaries.map(h=>{const pts=[...h.coords,h.coords[0]];const inner=pts.map(c=>`${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ');return `"POLYGON ((${inner}))"`;});
-    const blob=new Blob(['polygon_wkt\n'+rows.join('\n')],{type:'text/csv'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='satview_export.csv'; a.click(); URL.revokeObjectURL(a.href);
+    if (dbOnline) { window.open(`${API}/export/csv`, '_blank'); return; }
+    // Offline fallback — mirrors the backend export column order exactly
+    const headers = [
+        'id','label','point_id','cluster_id','plot_index',
+        'polygon_wkt_original','polygon_wkt','boundary_edited','sam_area_m2','plot_area_m2',
+        'sam_mask_wkt_original','sam_mask_wkt','mask_edited',
+        'height_m_2023','height_class_2023','height_src_2023',
+        'height_m_2024','height_class_2024','height_src_2024',
+        'height_m_2025','height_class_2025','height_src_2025',
+        'constructed_2023','constructed_2024','constructed_2025',
+        'sam_status','sam_score','sam_iou','covered_pct',
+        'sam_bbox_wkt','sam_mask_path','sam_rotation_deg','sam_error',
+        'created_at','updated_at'
+    ];
+    function csvEsc(v) {
+        const s = v == null ? '' : String(v);
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
+    }
+    const rows = boundaries.map(h => {
+        const pts = [...h.coords, h.coords[0]];
+        const currentWkt = `POLYGON ((${pts.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
+        const hts = h.heights || {};
+        // Reconstruct WKT from original coords if we have them (loaded from re-imported CSV)
+        const origBndWkt = (() => {
+            if (!h.original_coords || !h.original_coords.length) return '';
+            const pp = [...h.original_coords, h.original_coords[0]];
+            return `POLYGON ((${pp.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
+        })();
+        const origMaskWkt = (() => {
+            if (!h.original_mask_coords || !h.original_mask_coords.length) return '';
+            const pp = [...h.original_mask_coords, h.original_mask_coords[0]];
+            return `POLYGON ((${pp.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
+        })();
+        return [
+            h.dbId ?? h.id ?? '', h.label || '',
+            h.point_id || '', h.cluster_id || '', h.plot_index ?? '',
+            origBndWkt,
+            currentWkt,
+            h.boundary_edited || 0,
+            h.sam_area_m2 ?? '', h.plot_area_m2 ?? '',
+            origMaskWkt,
+            h.sam_mask_wkt || '', h.mask_edited || 0,
+            hts[2023]?.m ?? '', hts[2023]?.cls || '', hts[2023]?.src || '',
+            hts[2024]?.m ?? '', hts[2024]?.cls || '', hts[2024]?.src || '',
+            hts[2025]?.m ?? '', hts[2025]?.cls || '', hts[2025]?.src || '',
+            h.constructed_2023 || '', h.constructed_2024 || '', h.constructed_2025 || '',
+            h.sam_status || '', h.sam_score ?? '', h.sam_iou ?? '', h.covered_pct ?? '',
+            h.sam_bbox_wkt || '', h.sam_mask_path || '', h.sam_rotation_deg ?? '', h.sam_error || '',
+            '', ''  // created_at / updated_at — only available from DB
+        ].map(csvEsc).join(',');
+    });
+    const blob = new Blob([headers.join(',') + '\n' + rows.join('\n')], {type: 'text/csv'});
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = 'satview_export.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
 }
 
 // ── Progress ──────────────────────────────────────
@@ -1289,14 +2190,663 @@ function showToast(msg, type='success', duration=3500) {
     }, duration);
 }
 
+// ── Bulk Edit Storeys ─────────────────────────────
+function openBulkEdit() {
+    document.getElementById('bulkHouseCount').textContent = boundaries.length;
+    const container = document.getElementById('bulkYearRows');
+    container.innerHTML = '';
+    YEARS.forEach(year => {
+        const color = COLORS[year];
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:12px;';
+        row.innerHTML = `
+            <span style="font-family:'Space Mono',monospace; font-size:13px; font-weight:700; color:${color}; min-width:48px;">${year}</span>
+            <input type="text" id="bulk-cls-${year}"
+                placeholder="height class / storeys (blank = skip)"
+                style="flex:1; font-family:'Space Mono',monospace; font-size:11px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px 12px; outline:none; transition:border-color .2s; min-width:0;"
+                onfocus="this.style.borderColor='${color}'"
+                onblur="this.style.borderColor=''"
+                onkeydown="if(event.key==='Enter')applyBulkEdit()">
+        `;
+        container.appendChild(row);
+    });
+    document.getElementById('bulkEditModal').style.display = 'flex';
+    setTimeout(() => document.getElementById(`bulk-cls-${YEARS[0]}`)?.focus(), 50);
+}
+
+function closeBulkEdit() {
+    document.getElementById('bulkEditModal').style.display = 'none';
+}
+
+async function applyBulkEdit() {
+    const updates = [];
+    YEARS.forEach(year => {
+        const val = (document.getElementById(`bulk-cls-${year}`)?.value || '').trim();
+        if (val !== '') updates.push({ year, val });
+    });
+    if (!updates.length) { showToast('All fields are blank — nothing to apply.', 'warn'); return; }
+
+    closeBulkEdit();
+    showProgress(`Applying bulk edits to ${boundaries.length} houses…`);
+
+    let saved = 0, failed = 0;
+    for (const house of boundaries) {
+        for (const { year, val } of updates) {
+            if (!house.heights) house.heights = {};
+            if (!house.heights[year]) house.heights[year] = { m: null, cls: null };
+            house.heights[year].cls = val;
+            const el = document.getElementById(`hcls-${house.id}-${year}`);
+            if (el) el.value = val;
+            if (dbOnline && house.dbId) {
+                try {
+                    await fetch(`${API}/houses/${house.dbId}/meta`, {
+                        method: 'PATCH', headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({ field: `height_class_${year}`, value: val })
+                    });
+                    saved++;
+                } catch { failed++; }
+            }
+        }
+    }
+
+    hideProgress();
+    const summary = updates.map(u => `${u.year}="${u.val}"`).join(', ');
+    const dbNote  = dbOnline ? ` · ${saved} DB record${saved !== 1 ? 's' : ''} updated` : ' (offline — not saved to DB)';
+    showToast(`Applied [${summary}] to ${boundaries.length} house${boundaries.length !== 1 ? 's' : ''}${dbNote}`, 'success', 5000);
+}
+
+// ── Bulk Status ───────────────────────────────────
+let _bulkStatusChoice = null;  // 'constructed' | 'non_constructed' | 'unset'
+
+function openBulkStatus() {
+    _bulkStatusChoice = null;
+    document.getElementById('bulkStatusCount').textContent = boundaries.length;
+    // Reset button highlights
+    ['constructed','non_constructed','unset'].forEach(s => {
+        const btn = document.getElementById(`bst-btn-${s}`);
+        if (btn) btn.style.opacity = '1';
+    });
+    document.getElementById('bst-yr-2025').checked = true;
+    document.getElementById('bst-yr-2024').checked = true;
+    document.getElementById('bst-yr-2023').checked = true;
+    document.getElementById('bst-note').style.display = 'none';
+    const applyBtn = document.getElementById('bst-apply-btn');
+    applyBtn.disabled = true; applyBtn.style.opacity = '.45';
+    document.getElementById('bulkStatusModal').style.display = 'flex';
+}
+
+function selectBulkStatus(choice) {
+    _bulkStatusChoice = choice;
+    const styles = {
+        constructed:     { active: 'rgba(168,255,62,.3)',    border: 'rgba(168,255,62,.7)' },
+        non_constructed: { active: 'rgba(255,61,113,.3)',    border: 'rgba(255,61,113,.7)' },
+        unset:           { active: 'rgba(255,255,255,.1)',   border: 'var(--muted)' },
+    };
+    ['constructed','non_constructed','unset'].forEach(s => {
+        const btn = document.getElementById(`bst-btn-${s}`);
+        if (!btn) return;
+        if (s === choice) {
+            btn.style.background  = styles[s].active;
+            btn.style.borderColor = styles[s].border;
+            btn.style.opacity     = '1';
+        } else {
+            btn.style.background  = 'transparent';
+            btn.style.borderColor = 'var(--border)';
+            btn.style.opacity     = '.45';
+        }
+    });
+    document.getElementById('bst-note').style.display = choice === 'non_constructed' ? 'block' : 'none';
+    const applyBtn = document.getElementById('bst-apply-btn');
+    applyBtn.disabled = false; applyBtn.style.opacity = '1';
+}
+
+function closeBulkStatus() {
+    document.getElementById('bulkStatusModal').style.display = 'none';
+    _bulkStatusChoice = null;
+}
+
+async function applyBulkStatus() {
+    if (!_bulkStatusChoice) return;
+    const statusVal = _bulkStatusChoice === 'unset' ? null : _bulkStatusChoice;
+    const years = [2025,2024,2023].filter(y => document.getElementById(`bst-yr-${y}`)?.checked);
+    if (!years.length) { showToast('Select at least one year.', 'warn'); return; }
+
+    closeBulkStatus();
+    showProgress(`Applying status to ${boundaries.length} houses…`);
+
+    let saved = 0, failed = 0;
+    for (const house of boundaries) {
+        for (const year of years) {
+            const key = `constructed_${year}`;
+            house[key] = statusVal;
+            updateconstructedUI(house, year);
+
+            // Auto-zero height class when setting non-constructed
+            if (statusVal === 'non_constructed') {
+                if (!house.heights) house.heights = {};
+                if (!house.heights[year]) house.heights[year] = { m: null, cls: null };
+                house.heights[year].cls = '0';
+                house.heights[year].m   = 0;
+                const hclsEl = document.getElementById(`hcls-${house.id}-${year}`);
+                if (hclsEl) hclsEl.value = '0';
+            }
+
+            if (dbOnline && house.dbId) {
+                try {
+                    const calls = [fetch(`${API}/houses/${house.dbId}/meta`, {
+                        method: 'PATCH', headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({ field: key, value: statusVal })
+                    })];
+                    if (statusVal === 'non_constructed') {
+                        calls.push(fetch(`${API}/houses/${house.dbId}/meta`, {
+                            method: 'PATCH', headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({ field: `height_class_${year}`, value: '0' })
+                        }));
+                    }
+                    await Promise.all(calls);
+                    saved++;
+                } catch { failed++; }
+            }
+        }
+    }
+
+    hideProgress();
+    const label  = statusVal === 'constructed' ? '● Constructed' : statusVal === 'non_constructed' ? '○ Non-Constructed' : '— Unset';
+    const dbNote = dbOnline ? ` · ${saved} DB record${saved !== 1 ? 's' : ''} updated` : ' (offline)';
+    showToast(`Set "${label}" on ${boundaries.length} houses × ${years.length} year(s)${dbNote}`, 'success', 5000);
+}
+
 // ── Reset ─────────────────────────────────────────
 function resetView() {
-    allMaps.forEach(m=>{try{m.remove()}catch{}});
-    allMaps=[]; boundaries=[]; dupeCheckData=null; dupeResolutions={};
-    document.getElementById('fileInput').value='';
-    document.getElementById('fileInput2').value='';
+    if (mapLazyObserver) { mapLazyObserver.disconnect(); mapLazyObserver = null; }
+    allMaps.forEach(m => { try { m.remove(); } catch {} });
+    allMaps = []; boundaries = []; dupeCheckData = null; dupeResolutions = {};
+    currentGalleryPage = 0;
+    document.getElementById('fileInput').value  = '';
+    document.getElementById('fileInput2').value = '';
+    document.getElementById('loadMoreBar').style.display = 'none';
     showScreen('uploadScreen');
+    refreshDbCount();
 }
+
+// ══════════════════════════════════════════════════════════
+//  DEDUPLICATE / MATCH SELECTOR
+// ══════════════════════════════════════════════════════════
+
+const DEDUPE_RANK_COLORS = ['#a8ff3e','#00e5ff','#bf5fff','#ff9500','#ff3d71','#ffd700','#ff69b4','#7fffd4','#c0c0c0'];
+const DS = {
+    map:          null,
+    tileLayer:    null,
+    layers:       {},     // rank -> { plot, mask }
+    taxMarker:    null,
+    pins:         [],
+    currentPin:   null,
+    currentData:  null,   // { pin, candidates, selected_rank, status, notes }
+    selectedRank: 1,
+    year:         2025,
+    filter:       'all',
+    page:         0,
+    pageSize:     60,
+    totalPins:    0,
+    progress:     null,
+};
+
+function dedupeRankColor(rank) {
+    return DEDUPE_RANK_COLORS[Math.min(rank - 1, DEDUPE_RANK_COLORS.length - 1)];
+}
+
+// ── Upload handler ──────────────────────────────────────────
+document.getElementById('dedupeFileInput').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!dbOnline) { showAlert('Backend must be running for Deduplicate mode.', 'error'); return; }
+
+    showProgress('Parsing matched CSV and grouping by PIN…');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res  = await fetch(`${API}/dedupe/upload`, { method: 'POST', body: fd });
+        const data = await res.json();
+        hideProgress();
+        if (!res.ok) throw new Error(data.detail || 'Upload failed');
+        showAlert(`✓ ${data.message}`, 'success');
+        setTimeout(() => showDedupeScreen(), 600);
+    } catch(err) {
+        hideProgress();
+        showAlert('Dedupe upload failed: ' + err.message, 'error');
+    }
+    e.target.value = '';
+});
+
+// ── Screen init ─────────────────────────────────────────────
+async function showDedupeScreen() {
+    showScreen('dedupeScreen');
+    await dedupeRefreshProgress();
+    DS.page = 0;
+    await dedupeLoadPinsPage(0);
+    if (!DS.map) dedupeInitMap();
+}
+
+function dedupeInitMap() {
+    if (DS.map) { try { DS.map.remove(); } catch {} DS.map = null; }
+    DS.map = L.map('dedupeMap', { zoomControl: true, scrollWheelZoom: true })
+              .setView([31.48, 74.31], 17);
+    DS.tileLayer = L.tileLayer(`${API}/tiles/${DS.year}/{z}/{y}/{x}`, {
+        maxZoom: 21, tileSize: 256, attribution: '© Esri Wayback'
+    }).addTo(DS.map);
+}
+
+function dedupeSetYear(year) {
+    DS.year = year;
+    document.querySelectorAll('.dyp').forEach(b =>
+        b.classList.toggle('active', b.id === `dyp-${year}`)
+    );
+    if (!DS.map) return;
+    if (DS.tileLayer) DS.map.removeLayer(DS.tileLayer);
+    DS.tileLayer = L.tileLayer(`${API}/tiles/${year}/{z}/{y}/{x}`, {
+        maxZoom: 21, tileSize: 256, attribution: '© Esri Wayback'
+    }).addTo(DS.map);
+    DS.tileLayer.bringToBack();
+}
+
+// ── Progress ─────────────────────────────────────────────────
+async function dedupeRefreshProgress() {
+    if (!dbOnline) return;
+    try {
+        const r   = await fetch(`${API}/dedupe/progress`);
+        DS.progress = await r.json();
+        renderDedupeProgress();
+    } catch {}
+}
+
+function renderDedupeProgress() {
+    const p = DS.progress;
+    if (!p || !p.total) return;
+    const done = p.confirmed + p.auto;
+    const pct  = p.total ? Math.round(done / p.total * 100) : 0;
+    document.getElementById('dpProgress').innerHTML =
+        `<span class="dp-confirmed">${p.confirmed} confirmed</span>` +
+        `<span class="dp-auto">${p.auto} auto-selected</span>` +
+        `<span class="dp-review">${p.needs_review} need review</span>` +
+        `<span class="dp-total">/ ${p.total} PINs (${pct}%)</span>`;
+    document.getElementById('dpProgressBar').style.width = pct + '%';
+}
+
+// ── PIN list pagination ───────────────────────────────────────
+function dedupeSetFilter(filter) {
+    DS.filter = filter;
+    DS.page   = 0;
+    document.querySelectorAll('.dpf').forEach(b =>
+        b.classList.toggle('active', b.id === `dpf-${filter}`)
+    );
+    dedupeLoadPinsPage(0);
+}
+
+function dedupePagePrev() { if (DS.page > 0) dedupeLoadPinsPage(DS.page - 1); }
+function dedupePageNext() {
+    const totalPages = Math.ceil(DS.totalPins / DS.pageSize);
+    if (DS.page < totalPages - 1) dedupeLoadPinsPage(DS.page + 1);
+}
+
+async function dedupeLoadPinsPage(page) {
+    if (!dbOnline) return;
+    DS.page = page;
+    try {
+        const url = `${API}/dedupe/pins?page=${DS.page}&page_size=${DS.pageSize}&filter=${DS.filter}`;
+        const r   = await fetch(url);
+        const data = await r.json();
+        DS.pins      = data.items;
+        DS.totalPins = data.total;
+        renderDedupePinsList();
+        const totalPages = Math.max(1, Math.ceil(DS.totalPins / DS.pageSize));
+        document.getElementById('dedupePinsPage').textContent = `${DS.page + 1} / ${totalPages}`;
+        // Auto-select first unreviewed if nothing active
+        if (!DS.currentPin && DS.pins.length) {
+            const first = DS.pins.find(p => p.status === 'needs_review') || DS.pins[0];
+            if (first) await dedupeSelectPin(first.pin);
+        }
+    } catch(err) {
+        showToast('Failed to load PINs: ' + err.message, 'error');
+    }
+}
+
+function renderDedupePinsList() {
+    const list = document.getElementById('dedupePinsList');
+    if (!DS.pins.length) {
+        list.innerHTML = '<div class="dpp-empty">No PINs match the current filter</div>';
+        return;
+    }
+    list.innerHTML = DS.pins.map(p => {
+        const dot      = p.status === 'confirmed' ? '✓' : p.status === 'auto' ? '◑' : '●';
+        const dotClass = p.status === 'confirmed' ? 'dot-confirmed' : p.status === 'auto' ? 'dot-auto' : 'dot-review';
+        const score    = (typeof p.sam_score === 'number') ? p.sam_score.toFixed(2) : '—';
+        const shortPin = p.pin.length > 20 ? '…' + p.pin.slice(-18) : p.pin;
+        return `<div class="dpp-item${p.pin === DS.currentPin ? ' active' : ''}"
+                     onclick="dedupeSelectPin(${JSON.stringify(p.pin)})">
+                    <span class="dpp-dot ${dotClass}">${dot}</span>
+                    <div class="dpp-item-body">
+                        <div class="dpp-pin-id">${shortPin}</div>
+                        <div class="dpp-pin-meta">${p.cand_count} cands · score ${score}</div>
+                    </div>
+                </div>`;
+    }).join('');
+}
+
+// ── Select a PIN ──────────────────────────────────────────────
+async function dedupeSelectPin(pin) {
+    DS.currentPin = pin;
+    renderDedupePinsList();
+    try {
+        const r = await fetch(`${API}/dedupe/pin/${encodeURIComponent(pin)}`);
+        if (!r.ok) throw new Error(await r.text());
+        DS.currentData   = await r.json();
+        DS.selectedRank  = DS.currentData.selected_rank;
+        document.getElementById('dedupeNotes').value = DS.currentData.notes || '';
+        renderDedupePinHeader();
+        renderDedupeCandidates();
+        renderDedupeMap();
+        updateDedupeConfirmBtn();
+    } catch(err) {
+        showToast('Failed to load PIN: ' + err.message, 'error');
+    }
+}
+
+function renderDedupePinHeader() {
+    if (!DS.currentData) return;
+    const pin  = DS.currentData.pin;
+    const c    = DS.currentData.candidates[0] || {};
+    document.getElementById('dedupePinId').textContent = pin;
+    document.getElementById('dedupeCandCount').textContent = `${DS.currentData.candidates.length} candidates`;
+    document.getElementById('dedupeTaxInfo').innerHTML =
+        `<div class="dip-tax-cell"><strong>${c.circle_name || '—'}</strong></div>` +
+        `<div class="dip-tax-cell">${c.locality_name || ''}</div>` +
+        `<div class="dip-tax-cell">GARV: <strong>${c.garv || '—'}</strong></div>` +
+        `<div class="dip-tax-cell">Tax: <strong>${c.total_property_tax || '—'}</strong></div>` +
+        `<div class="dip-tax-cell">Status: <strong style="color:${DS.currentData.status==='confirmed'?'var(--c23)':DS.currentData.status==='auto'?'#ff9500':'var(--c22)'}">${DS.currentData.status}</strong></div>`;
+}
+
+// ── Map rendering ─────────────────────────────────────────────
+function parseWktLL(wkt) {
+    if (!wkt) return [];
+    const m = wkt.match(/POLYGON\s*\(\(([^)]+)\)/i);
+    if (!m) return [];
+    return m[1].trim().split(',').map(pair => {
+        const pts = pair.trim().split(/\s+/);
+        const lon = parseFloat(pts[0]), lat = parseFloat(pts[1]);
+        return (!isNaN(lat) && !isNaN(lon)) ? [lat, lon] : null;
+    }).filter(Boolean);
+}
+
+function renderDedupeMap() {
+    if (!DS.map || !DS.currentData) return;
+    // Clear old layers
+    Object.values(DS.layers).forEach(g => {
+        if (g.plot) { try { DS.map.removeLayer(g.plot); } catch {} }
+        if (g.mask) { try { DS.map.removeLayer(g.mask); } catch {} }
+    });
+    DS.layers = {};
+    if (DS.taxMarker) { try { DS.map.removeLayer(DS.taxMarker); } catch {} DS.taxMarker = null; }
+
+    const cands  = DS.currentData.candidates;
+    const bounds = [];
+
+    cands.forEach(c => {
+        const rank       = c.rank;
+        const color      = dedupeRankColor(rank);
+        const isSel      = (rank === DS.selectedRank);
+        const g          = {};
+
+        // Outer plot boundary (dashed when not selected)
+        const plotCoords = parseWktLL(c.polygon_wkt);
+        if (plotCoords.length >= 3) {
+            g.plot = L.polygon(plotCoords, {
+                color, weight: isSel ? 2.5 : 1.5, opacity: 0.9,
+                fillOpacity: isSel ? 0.10 : 0.03,
+                dashArray: isSel ? null : '5,5',
+            }).addTo(DS.map);
+            g.plot.on('click', () => dedupeSelectCandidate(rank));
+            plotCoords.forEach(pt => bounds.push(pt));
+        }
+
+        // SAM mask — solid fill, more prominent
+        const maskCoords = parseWktLL(c.sam_mask_wkt);
+        if (maskCoords.length >= 3) {
+            g.mask = L.polygon(maskCoords, {
+                color, weight: isSel ? 3 : 1.5, opacity: 1,
+                fillColor: color, fillOpacity: isSel ? 0.38 : 0.12,
+            }).addTo(DS.map);
+            g.mask.on('click', () => dedupeSelectCandidate(rank));
+            maskCoords.forEach(pt => bounds.push(pt));
+        }
+
+        // Rank label on top of rank-1
+        if (rank <= 5 && (plotCoords.length || maskCoords.length)) {
+            const centreCoords = maskCoords.length ? maskCoords : plotCoords;
+            const latSum = centreCoords.reduce((s, p) => s + p[0], 0) / centreCoords.length;
+            const lonSum = centreCoords.reduce((s, p) => s + p[1], 0) / centreCoords.length;
+            L.marker([latSum, lonSum], {
+                icon: L.divIcon({
+                    className: '',
+                    html: `<div style="font-family:'Space Mono',monospace;font-size:9px;font-weight:700;color:${color};background:rgba(10,12,15,.8);padding:1px 5px;border-radius:3px;border:1px solid ${color};white-space:nowrap;pointer-events:none">#${rank}</div>`,
+                    iconAnchor: [14, 8],
+                }),
+                interactive: false,
+            }).addTo(DS.map);
+        }
+
+        DS.layers[rank] = g;
+    });
+
+    // Tax record point — red crosshair marker
+    const lat = parseFloat(cands[0]?.latitude);
+    const lon = parseFloat(cands[0]?.longitude);
+    if (!isNaN(lat) && !isNaN(lon)) {
+        DS.taxMarker = L.circleMarker([lat, lon], {
+            radius: 7, color: '#ff3d71', fillColor: '#ff3d71', fillOpacity: 0.85, weight: 2,
+        }).addTo(DS.map).bindTooltip('Tax Record Point', { permanent: false, direction: 'top' });
+        bounds.push([lat, lon]);
+    }
+
+    if (bounds.length) DS.map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40] });
+}
+
+function updateDedupeMapHighlight() {
+    if (!DS.currentData) return;
+    DS.currentData.candidates.forEach(c => {
+        const isSel = c.rank === DS.selectedRank;
+        const g     = DS.layers[c.rank];
+        if (!g) return;
+        if (g.plot) g.plot.setStyle({ weight: isSel ? 2.5 : 1.5, fillOpacity: isSel ? 0.10 : 0.03, dashArray: isSel ? null : '5,5' });
+        if (g.mask) g.mask.setStyle({ weight: isSel ? 3 : 1.5, fillOpacity: isSel ? 0.38 : 0.12 });
+    });
+}
+
+// ── Candidate cards ───────────────────────────────────────────
+function renderDedupeCandidates() {
+    if (!DS.currentData) return;
+    const container = document.getElementById('dedupeCandidates');
+    const cands     = DS.currentData.candidates;
+
+    container.innerHTML = cands.map(c => {
+        const isSel    = c.rank === DS.selectedRank;
+        const color    = dedupeRankColor(c.rank);
+        const score    = parseFloat(c.sam_score)    || 0;
+        const iou      = parseFloat(c.sam_iou)      || 0;
+        const covPct   = parseFloat(c.covered_pct)  || 0;
+        const dist     = parseFloat(c._distance_m)  || 0;
+        const h25      = c.height_class_2025 || '—';
+        const h24      = c.height_class_2024 || '—';
+        const h23      = c.height_class_2023 || '—';
+        return `
+        <div class="dc-item${isSel ? ' selected' : ''}"
+             style="--rank-color:${color}"
+             onclick="dedupeSelectCandidate(${c.rank})">
+            <div class="dc-header">
+                <span class="dc-rank" style="color:${color}">Rank ${c.rank}</span>
+                <span class="dc-type">${c._match_type || ''}</span>
+                ${isSel ? '<span class="dc-sel-badge">SELECTED</span>' : ''}
+            </div>
+            <div class="dc-scores">
+                <div class="dc-score-bar">
+                    <span class="dc-score-label">SAM Score</span>
+                    <div class="dc-bar-track"><div class="dc-bar-fill" style="width:${(score*100).toFixed(0)}%;background:${color}"></div></div>
+                    <span class="dc-score-val">${score.toFixed(3)}</span>
+                </div>
+                <div class="dc-score-bar">
+                    <span class="dc-score-label">IoU</span>
+                    <div class="dc-bar-track"><div class="dc-bar-fill" style="width:${(iou*100).toFixed(0)}%;background:${color}"></div></div>
+                    <span class="dc-score-val">${iou.toFixed(3)}</span>
+                </div>
+            </div>
+            <div class="dc-meta">
+                <span>Cov: ${covPct.toFixed(1)}%</span>
+                <span>Dist: ${dist.toFixed(1)}m</span>
+                <span>${c.point_id || '—'}</span>
+                <span>${c.sam_status || '—'}</span>
+            </div>
+            <div class="dc-height">
+                <span title="2025">${h25}</span>
+                <span title="2024">${h24}</span>
+                <span title="2023">${h23}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function dedupeSelectCandidate(rank) {
+    DS.selectedRank = rank;
+    renderDedupeCandidates();
+    updateDedupeMapHighlight();
+    updateDedupeConfirmBtn();
+}
+
+function updateDedupeConfirmBtn() {
+    const btn = document.getElementById('dedupeConfirmBtn');
+    if (!btn) return;
+    if (!DS.currentData) {
+        btn.textContent = 'Select a PIN first'; btn.disabled = true; btn.style.opacity = '.5'; return;
+    }
+    if (DS.currentData.status === 'confirmed' && DS.currentData.selected_rank === DS.selectedRank) {
+        btn.textContent = '✓ Already Confirmed'; btn.className = 'btn btn-outline'; btn.disabled = false; btn.style.opacity = '1';
+    } else {
+        btn.textContent = `✓ Confirm Rank ${DS.selectedRank}`; btn.className = 'btn btn-green'; btn.disabled = false; btn.style.opacity = '1';
+    }
+}
+
+// ── Confirm selection ─────────────────────────────────────────
+async function dedupeConfirmSelection() {
+    if (!DS.currentPin || !DS.currentData) return;
+    const notes = document.getElementById('dedupeNotes').value.trim();
+    try {
+        const r = await fetch(`${API}/dedupe/pin/${encodeURIComponent(DS.currentPin)}/select`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rank: DS.selectedRank, notes }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        DS.currentData.status        = 'confirmed';
+        DS.currentData.selected_rank = DS.selectedRank;
+        DS.currentData.notes         = notes;
+        // Update local pins list item
+        const pin = DS.pins.find(p => p.pin === DS.currentPin);
+        if (pin) { pin.status = 'confirmed'; pin.selected_rank = DS.selectedRank; }
+        renderDedupePinsList();
+        renderDedupePinHeader();
+        updateDedupeConfirmBtn();
+        await dedupeRefreshProgress();
+        showToast(`✓ PIN confirmed — Rank ${DS.selectedRank} selected`, 'success');
+        // Advance to next unconfirmed
+        dedupeNavPin(1, true);
+    } catch(err) {
+        showToast('Save failed: ' + err.message, 'error');
+    }
+}
+
+// ── Navigate PINs ─────────────────────────────────────────────
+async function dedupeNavPin(delta, skipConfirmed = false) {
+    if (!DS.pins.length) return;
+    const idx = DS.pins.findIndex(p => p.pin === DS.currentPin);
+    let next;
+    if (skipConfirmed) {
+        next = DS.pins.find((p, i) => i > idx && p.status !== 'confirmed');
+        if (!next) next = DS.pins.find(p => p.status !== 'confirmed');
+    } else {
+        const ni = idx + delta;
+        if (ni >= 0 && ni < DS.pins.length) next = DS.pins[ni];
+    }
+    if (next) await dedupeSelectPin(next.pin);
+    else if (skipConfirmed) showToast('All PINs on this page are confirmed!', 'success');
+}
+
+// ── Bulk confirm ──────────────────────────────────────────────
+async function dedupeBulkConfirm() {
+    const p = DS.progress || {};
+    if (!p.auto) { showToast('No auto-selected PINs to confirm.', 'warn'); return; }
+    if (!confirm(
+        `Auto-confirm all ${p.auto} high-confidence PIN(s) where SAM score ≥ 0.70?\n\n` +
+        `This confirms the algorithm's top match for each. You can still override individually after.`
+    )) return;
+    showProgress(`Confirming ${p.auto} high-confidence selections…`);
+    try {
+        const r    = await fetch(`${API}/dedupe/bulk-confirm`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ min_score: 0.70 }),
+        });
+        const data = await r.json();
+        hideProgress();
+        await dedupeRefreshProgress();
+        DS.page = 0;
+        await dedupeLoadPinsPage(0);
+        showToast(`⚡ ${data.confirmed} PINs bulk-confirmed`, 'success', 5000);
+    } catch(err) {
+        hideProgress();
+        showToast('Bulk confirm failed: ' + err.message, 'error');
+    }
+}
+
+// ── Export ───────────────────────────────────────────────────
+async function dedupeExport() {
+    const p = DS.progress || {};
+    if (!p.total) { showToast('No dedupe session loaded.', 'warn'); return; }
+    if (p.needs_review > 0) {
+        const go = confirm(
+            `${p.needs_review} PIN(s) still need manual review.\n\n` +
+            `Export anyway? Those PINs will use the auto-selected rank-1 match.\n` +
+            `(${p.confirmed + p.auto} / ${p.total} PINs ready)`
+        );
+        if (!go) return;
+    }
+    window.location.href = `${API}/dedupe/export`;
+    showToast('⬇ Downloading deduplicated CSV…', 'warn', 3000);
+}
+
+// ── Reset session ────────────────────────────────────────────
+async function dedupeResetSession() {
+    if (!confirm('Clear the current dedupe session? All selections will be lost.')) return;
+    try {
+        await fetch(`${API}/dedupe/session`, { method: 'DELETE' });
+        DS.currentPin = null; DS.currentData = null; DS.pins = []; DS.progress = null;
+        if (DS.map) { try { DS.map.remove(); } catch {} DS.map = null; }
+        showToast('Dedupe session cleared', 'warn');
+        showScreen('uploadScreen');
+    } catch(err) {
+        showToast('Reset failed: ' + err.message, 'error');
+    }
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    const screen = document.querySelector('.screen.active');
+    if (!screen || screen.id !== 'dedupeScreen') return;
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); dedupeNavPin(1); }
+    else if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); dedupeNavPin(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); dedupeConfirmSelection(); }
+    else if (e.key >= '1' && e.key <= '9') {
+        const rank = parseInt(e.key);
+        if (DS.currentData?.candidates?.some(c => c.rank === rank)) dedupeSelectCandidate(rank);
+    }
+});
 </script>
 </body>
 </html>
