@@ -1,1 +1,15 @@
+# Python
 *.pyc
+__pycache__/
+
+# SQLite database & WAL files
+*.db
+*.db-shm
+*.db-wal
+
+# macOS
+.DS_Store
+
+# Data exports / large input files (not source code)
+*.csv
+*.kml

@@ -142,6 +142,28 @@ def init_db():
                 conn.execute(f"ALTER TABLE houses ADD COLUMN {col} {typ}")
     print("✓ Database initialised:", DB_PATH)
 
+def init_dedupe_db():
+    with get_db() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS dedupe_candidates (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                pin            TEXT    NOT NULL,
+                match_rank     INTEGER NOT NULL DEFAULT 0,
+                candidate_json TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_dc_pin  ON dedupe_candidates(pin);
+            CREATE INDEX IF NOT EXISTS idx_dc_rank ON dedupe_candidates(pin, match_rank);
+
+            CREATE TABLE IF NOT EXISTS dedupe_selections (
+                pin           TEXT    PRIMARY KEY,
+                selected_rank INTEGER NOT NULL DEFAULT 1,
+                status        TEXT    NOT NULL DEFAULT 'needs_review',
+                notes         TEXT,
+                updated_at    TEXT    DEFAULT (datetime('now'))
+            );
+        """)
+    print("✓ Dedupe tables ready")
+
 # ── WKT helpers ───────────────────────────────────────────────────────────────
 def parse_wkt_polygon(wkt: str) -> list:
     """Parse WKT POLYGON string → [[lat,lon], ...] (closing duplicate dropped)."""
@@ -172,6 +194,7 @@ def coords_to_wkt(coords: list) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    init_dedupe_db()
     global _wayback_releases
     _wayback_releases = fetch_wayback_releases()
     print("✓ Wayback releases:", {y: v["release"] for y, v in _wayback_releases.items()})
@@ -624,6 +647,254 @@ def export_csv():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=satview_export.csv"}
     )
+
+# ── Deduplicate Pipeline ──────────────────────────────────────────────────────
+
+class DedupeSelectBody(BaseModel):
+    rank:  int
+    notes: Optional[str] = None
+
+class BulkConfirmBody(BaseModel):
+    min_score: float = 0.70
+
+
+@app.post("/api/dedupe/upload")
+async def dedupe_upload(file: UploadFile = File(...)):
+    content = (await file.read()).decode("utf-8-sig")
+    reader  = csv_module.DictReader(io.StringIO(content))
+    all_rows = list(reader)
+    if not all_rows:
+        raise HTTPException(400, "Empty file")
+
+    missing = {'pin', '_match_rank', 'polygon_wkt'} - set(all_rows[0].keys())
+    if missing:
+        raise HTTPException(400, f"Missing required columns: {missing}")
+
+    from collections import defaultdict
+    by_pin: dict = defaultdict(list)
+    for row in all_rows:
+        pin = row.get('pin', '').strip()
+        if pin:
+            by_pin[pin].append(row)
+
+    ins_cands, ins_sels = [], []
+    for pin, candidates in by_pin.items():
+        candidates.sort(key=lambda r: int(r.get('_match_rank') or 999))
+        for c in candidates:
+            ins_cands.append((pin, int(c.get('_match_rank') or 0), json.dumps(c)))
+        rank1  = next((c for c in candidates if str(c.get('_match_rank', '')).strip() == '1'), candidates[0])
+        score  = _safe_float(rank1.get('sam_score')) or 0.0
+        status = 'auto' if score >= 0.70 else 'needs_review'
+        ins_sels.append((pin, 1, status))
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM dedupe_candidates")
+        conn.execute("DELETE FROM dedupe_selections")
+        conn.executemany(
+            "INSERT INTO dedupe_candidates (pin, match_rank, candidate_json) VALUES (?,?,?)",
+            ins_cands
+        )
+        conn.executemany(
+            "INSERT INTO dedupe_selections (pin, selected_rank, status) VALUES (?,?,?)",
+            ins_sels
+        )
+
+    total      = len(by_pin)
+    auto_cnt   = sum(1 for *_, s in ins_sels if s == 'auto')
+    review_cnt = total - auto_cnt
+    return {
+        "total_pins":    total,
+        "auto_selected": auto_cnt,
+        "needs_review":  review_cnt,
+        "total_rows":    len(all_rows),
+        "message": f"Loaded {total} PINs ({len(all_rows)} rows). {auto_cnt} auto-selected (score≥0.70), {review_cnt} need manual review."
+    }
+
+
+@app.get("/api/dedupe/progress")
+def dedupe_progress():
+    with get_db() as conn:
+        total     = conn.execute("SELECT COUNT(DISTINCT pin) FROM dedupe_candidates").fetchone()[0]
+        confirmed = conn.execute("SELECT COUNT(*) FROM dedupe_selections WHERE status='confirmed'").fetchone()[0]
+        auto      = conn.execute("SELECT COUNT(*) FROM dedupe_selections WHERE status='auto'").fetchone()[0]
+        review    = conn.execute("SELECT COUNT(*) FROM dedupe_selections WHERE status='needs_review'").fetchone()[0]
+    return {"total": total, "confirmed": confirmed, "auto": auto, "needs_review": review}
+
+
+@app.get("/api/dedupe/pins")
+def dedupe_pins(
+    page:      int = Query(0, ge=0),
+    page_size: int = Query(60, ge=1, le=200),
+    filter:    str = Query("all"),
+):
+    where  = "" if filter == "all" else "WHERE s.status=?"
+    params: list = [] if filter == "all" else [filter]
+
+    with get_db() as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM dedupe_selections s {where}", params).fetchone()[0]
+        rows  = conn.execute(f"""
+            SELECT s.pin, s.selected_rank, s.status, s.notes,
+                   (SELECT c.candidate_json FROM dedupe_candidates c
+                    WHERE c.pin=s.pin AND c.match_rank=s.selected_rank LIMIT 1) AS sel_json,
+                   (SELECT COUNT(*) FROM dedupe_candidates c WHERE c.pin=s.pin) AS cand_count
+            FROM dedupe_selections s
+            {where}
+            ORDER BY
+                CASE s.status WHEN 'needs_review' THEN 0 WHEN 'auto' THEN 1 ELSE 2 END,
+                s.pin
+            LIMIT ? OFFSET ?
+        """, params + [page_size, page * page_size]).fetchall()
+
+    items = []
+    for r in rows:
+        sel = json.loads(r['sel_json']) if r['sel_json'] else {}
+        items.append({
+            "pin":           r['pin'],
+            "selected_rank": r['selected_rank'],
+            "status":        r['status'],
+            "notes":         r['notes'],
+            "cand_count":    r['cand_count'],
+            "sam_score":     _safe_float(sel.get('sam_score')),
+            "circle_name":   sel.get('circle_name', ''),
+            "locality_name": sel.get('locality_name', ''),
+        })
+    return {
+        "total":    total,
+        "page":     page,
+        "page_size": page_size,
+        "has_more": (page + 1) * page_size < total,
+        "items":    items,
+    }
+
+
+@app.get("/api/dedupe/pin/{pin:path}")
+def dedupe_pin_detail(pin: str):
+    with get_db() as conn:
+        cands = conn.execute(
+            "SELECT match_rank, candidate_json FROM dedupe_candidates WHERE pin=? ORDER BY match_rank",
+            (pin,)
+        ).fetchall()
+        sel = conn.execute(
+            "SELECT selected_rank, status, notes FROM dedupe_selections WHERE pin=?",
+            (pin,)
+        ).fetchone()
+    if not cands:
+        raise HTTPException(404, "PIN not found in dedupe session")
+    return {
+        "pin":           pin,
+        "candidates":    [{"rank": r['match_rank'], **json.loads(r['candidate_json'])} for r in cands],
+        "selected_rank": sel['selected_rank'] if sel else 1,
+        "status":        sel['status']        if sel else 'needs_review',
+        "notes":         sel['notes']         if sel else '',
+    }
+
+
+@app.post("/api/dedupe/pin/{pin:path}/select")
+def dedupe_select(pin: str, body: DedupeSelectBody):
+    with get_db() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM dedupe_candidates WHERE pin=? AND match_rank=?", (pin, body.rank)
+        ).fetchone()
+        if not exists:
+            raise HTTPException(404, f"Rank {body.rank} not found for PIN {pin}")
+        conn.execute("""
+            INSERT INTO dedupe_selections (pin, selected_rank, status, notes, updated_at)
+            VALUES (?, ?, 'confirmed', ?, datetime('now'))
+            ON CONFLICT(pin) DO UPDATE SET
+                selected_rank = excluded.selected_rank,
+                status        = 'confirmed',
+                notes         = excluded.notes,
+                updated_at    = excluded.updated_at
+        """, (pin, body.rank, body.notes or ''))
+    return {"ok": True}
+
+
+@app.post("/api/dedupe/bulk-confirm")
+def dedupe_bulk_confirm(body: BulkConfirmBody):
+    with get_db() as conn:
+        auto_rows = conn.execute(
+            "SELECT pin, selected_rank FROM dedupe_selections WHERE status='auto'"
+        ).fetchall()
+        confirmed = 0
+        for row in auto_rows:
+            cand = conn.execute(
+                "SELECT candidate_json FROM dedupe_candidates WHERE pin=? AND match_rank=?",
+                (row['pin'], row['selected_rank'])
+            ).fetchone()
+            if not cand:
+                continue
+            score = _safe_float(json.loads(cand['candidate_json']).get('sam_score')) or 0.0
+            if score >= body.min_score:
+                conn.execute(
+                    "UPDATE dedupe_selections SET status='confirmed', updated_at=datetime('now') WHERE pin=?",
+                    (row['pin'],)
+                )
+                confirmed += 1
+    return {"confirmed": confirmed}
+
+
+@app.get("/api/dedupe/export")
+def dedupe_export():
+    with get_db() as conn:
+        sels = conn.execute(
+            "SELECT pin, selected_rank, status, notes FROM dedupe_selections"
+        ).fetchall()
+    if not sels:
+        raise HTTPException(400, "No dedupe session loaded. Upload a CSV first.")
+
+    PIN_COLS = [
+        'pin', 'circle_name', 'locality_name', 'circle_arm', 'pool_type',
+        'in_tax_admin', 'tax_admin_arm', 'in_citizen_survey', 'survey_group',
+        'organized_type', 'is_gated', 'is_planned', 'is_organized',
+        'garv', 'total_property_tax', 'total_covered_area', 'total_land_area',
+        'latitude', 'longitude', '_match_type', '_distance_m', '_source_file',
+    ]
+    PLOT_COLS = [
+        'point_id', 'plot_index', 'polygon_wkt', 'plot_area_m2',
+        'sam_status', 'sam_score', 'sam_iou', 'sam_area_m2', 'covered_pct',
+        'sam_bbox_wkt', 'sam_mask_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
+        'height_m_2023', 'height_class_2023', 'height_src_2023',
+        'height_m_2024', 'height_class_2024', 'height_src_2024',
+        'height_m_2025', 'height_class_2025', 'height_src_2025',
+    ]
+    META_COLS = ['_selected_rank', '_verified', '_dedupe_notes']
+    ALL_COLS  = PIN_COLS + PLOT_COLS + META_COLS
+
+    output = io.StringIO()
+    writer = csv_module.writer(output, quoting=csv_module.QUOTE_MINIMAL)
+    writer.writerow(ALL_COLS)
+
+    with get_db() as conn:
+        for sel in sels:
+            cand = conn.execute(
+                "SELECT candidate_json FROM dedupe_candidates WHERE pin=? AND match_rank=?",
+                (sel['pin'], sel['selected_rank'])
+            ).fetchone()
+            if not cand:
+                continue
+            data = json.loads(cand['candidate_json'])
+            row  = []
+            for col in ALL_COLS:
+                if   col == '_selected_rank': row.append(sel['selected_rank'])
+                elif col == '_verified':      row.append(1 if sel['status'] == 'confirmed' else 0)
+                elif col == '_dedupe_notes':  row.append(sel['notes'] or '')
+                else:                         row.append(data.get(col, ''))
+            writer.writerow(row)
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=modeltown_deduplicated.csv"}
+    )
+
+
+@app.delete("/api/dedupe/session")
+def dedupe_reset():
+    with get_db() as conn:
+        conn.execute("DELETE FROM dedupe_candidates")
+        conn.execute("DELETE FROM dedupe_selections")
+    return {"message": "Dedupe session cleared"}
+
 
 # ── Serve frontend ─────────────────────────────────────────────────────────────
 @app.get("/")
