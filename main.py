@@ -3,11 +3,15 @@ SatView Backend — FastAPI + SQLite
 Run: uvicorn main:app --reload --port 8000
 """
 
-import io, csv as csv_module, math, sqlite3, json, re, requests
+import io, csv as csv_module, math, sqlite3, json, re, requests, uuid
 from pathlib import Path
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional
+
+# Unique ID for this server process lifetime.
+# Deletions are tagged with this ID so each server restart starts a clean slate.
+SESSION_ID = str(uuid.uuid4())
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -140,6 +144,27 @@ def init_db():
         for col, typ in col_types.items():
             if col not in cols:
                 conn.execute(f"ALTER TABLE houses ADD COLUMN {col} {typ}")
+
+        # Deletion audit log — persists snapshots of every individually-deleted house
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS deleted_houses (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id    INTEGER NOT NULL,
+                snapshot_json  TEXT    NOT NULL,
+                deleted_at     TEXT    DEFAULT (datetime('now')),
+                deleted_reason TEXT    DEFAULT 'manual',
+                session_id     TEXT    DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_dh_deleted_at
+                ON deleted_houses(deleted_at);
+        """)
+        # Migration: add session_id column if it doesn't exist yet (table pre-dates this column)
+        dh_cols = [row[1] for row in conn.execute("PRAGMA table_info(deleted_houses)").fetchall()]
+        if 'session_id' not in dh_cols:
+            conn.execute("ALTER TABLE deleted_houses ADD COLUMN session_id TEXT DEFAULT ''")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dh_session ON deleted_houses(session_id)"
+        )
     print("✓ Database initialised:", DB_PATH)
 
 def init_dedupe_db():
@@ -317,8 +342,34 @@ def update_house(house_id: int, body: HouseUpdate):
 @app.delete("/api/houses/{house_id}")
 def delete_house(house_id: int):
     with get_db() as conn:
+        row = conn.execute("SELECT * FROM houses WHERE id=?", (house_id,)).fetchone()
+        if row:
+            conn.execute(
+                "INSERT INTO deleted_houses (original_id, snapshot_json, deleted_reason, session_id) "
+                "VALUES (?, ?, 'manual', ?)",
+                (house_id, json.dumps(dict(row)), SESSION_ID)
+            )
         conn.execute("DELETE FROM houses WHERE id=?", (house_id,))
-    return {"message": "Deleted"}
+    return {"ok": True, "message": "Deleted"}
+
+
+@app.get("/api/deleted/count")
+def deleted_count():
+    with get_db() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM deleted_houses WHERE session_id=?", (SESSION_ID,)
+        ).fetchone()[0]
+    return {"count": n}
+
+
+@app.delete("/api/deleted")
+def clear_deleted_log():
+    with get_db() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM deleted_houses WHERE session_id=?", (SESSION_ID,)
+        ).fetchone()[0]
+        conn.execute("DELETE FROM deleted_houses WHERE session_id=?", (SESSION_ID,))
+    return {"cleared": n, "message": f"Deletion log cleared — {n} records removed."}
 
 EDITABLE_META = {
     'constructed_2023', 'constructed_2024', 'constructed_2025',
@@ -587,10 +638,14 @@ def clear_database():
 @app.get("/api/export/csv")
 def export_csv():
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM houses ORDER BY id").fetchall()
+        active_rows  = conn.execute("SELECT * FROM houses ORDER BY id").fetchall()
+        deleted_rows = conn.execute(
+            "SELECT original_id, snapshot_json, deleted_at, deleted_reason "
+            "FROM deleted_houses WHERE session_id=? ORDER BY deleted_at",
+            (SESSION_ID,)
+        ).fetchall()
 
-    # Column order is designed for research traceability:
-    # identifiers → boundary before/after → mask before/after → height → status → SAM metadata
+    # Column order: identifiers → boundary → mask → height → status → SAM → audit → tracking
     export_cols = [
         # ── Identifiers ──────────────────────────────────────────
         'id', 'label', 'point_id', 'cluster_id', 'plot_index',
@@ -615,17 +670,18 @@ def export_csv():
         'sam_bbox_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
         # ── Audit timestamps ─────────────────────────────────────
         'created_at', 'updated_at',
+        # ── Deletion tracking (empty for active records) ─────────
+        '_record_status', 'deleted_at', 'deleted_reason',
     ]
 
     output = io.StringIO()
     writer = csv_module.writer(output, quoting=csv_module.QUOTE_MINIMAL)
     writer.writerow(export_cols)
 
-    db_cols = set()
-    if rows:
-        db_cols = set(rows[0].keys())
+    db_cols: set = set(active_rows[0].keys()) if active_rows else set()
 
-    for r in rows:
+    # ── Active records ────────────────────────────────────────────────────────
+    for r in active_rows:
         coords = json.loads(r['coords_json'] or '[]')
         if not coords:
             continue
@@ -634,12 +690,43 @@ def export_csv():
         for col in export_cols:
             if col == 'polygon_wkt':
                 row_data.append(current_wkt)
+            elif col in ('_record_status',):
+                row_data.append('active')
+            elif col in ('deleted_at', 'deleted_reason'):
+                row_data.append('')
             elif col not in db_cols:
-                # Column not yet in DB (older records before migration)
                 row_data.append('')
             else:
                 v = r[col]
                 row_data.append(v if v is not None else '')
+        writer.writerow(row_data)
+
+    # ── Deleted records (appended after active, clearly marked) ───────────────
+    for dr in deleted_rows:
+        try:
+            snap = json.loads(dr['snapshot_json'])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        coords = json.loads(snap.get('coords_json') or '[]')
+        current_wkt = coords_to_wkt(coords) if coords else ''
+        snap_cols = set(snap.keys())
+        row_data = []
+        for col in export_cols:
+            if col == 'id':
+                row_data.append(snap.get('id', dr['original_id']))
+            elif col == 'polygon_wkt':
+                row_data.append(current_wkt)
+            elif col == '_record_status':
+                row_data.append('deleted')
+            elif col == 'deleted_at':
+                row_data.append(dr['deleted_at'] or '')
+            elif col == 'deleted_reason':
+                row_data.append(dr['deleted_reason'] or '')
+            elif col in snap_cols:
+                v = snap.get(col)
+                row_data.append(v if v is not None else '')
+            else:
+                row_data.append('')
         writer.writerow(row_data)
 
     return Response(

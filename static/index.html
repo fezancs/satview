@@ -231,6 +231,14 @@ input[type="file"] { display:none; }
 .btn-red { background:rgba(255,61,113,.12); border-color:rgba(255,61,113,.4); color:var(--c22); }
 .btn-red:hover { background:rgba(255,61,113,.28); }
 
+/* ── Deletion Audit Badge ── */
+#deletedBadge { display:none; align-items:center; gap:6px; font-family:'Space Mono',monospace; font-size:9px; padding:3px 10px 3px 8px; border-radius:5px; background:rgba(255,61,113,.1); border:1px solid rgba(255,61,113,.3); color:var(--c22); cursor:default; }
+#deletedBadge.show { display:flex; }
+#deletedBadge .del-badge-num { font-weight:700; font-size:12px; color:var(--c22); }
+#deletedBadge .del-badge-lbl { color:rgba(255,61,113,.7); }
+.del-badge-clear { background:none; border:none; color:rgba(255,61,113,.6); cursor:pointer; font-size:11px; padding:0 0 0 2px; line-height:1; transition:color .15s; }
+.del-badge-clear:hover { color:var(--c22); }
+
 /* DB info bar on upload screen */
 #dbInfoBar { display:none; width:100%; max-width:640px; margin-top:10px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px 16px; font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); position:relative; z-index:1; gap:16px; align-items:center; flex-wrap:wrap; }
 #dbInfoBar.show { display:flex; }
@@ -514,6 +522,11 @@ height_m_2023, height_class_2023, height_m_2024, height_class_2024, height_m_202
         <div class="top-bar-left">
             <span class="top-bar-brand">// SATVIEW</span>
             <span class="top-bar-count" id="houseCount"></span>
+            <div id="deletedBadge" title="Houses deleted this session — included in export">
+                <span class="del-badge-num" id="deletedBadgeNum">0</span>
+                <span class="del-badge-lbl">deleted</span>
+                <button class="del-badge-clear" onclick="clearDeletionLog()" title="Clear deletion log">✕</button>
+            </div>
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);user-select:none;padding:4px 0;" title="Select all visible houses">
                 <input type="checkbox" id="selectAllChk" style="accent-color:var(--c22);width:14px;height:14px;cursor:pointer;" onchange="selectAllChkChanged(this.checked)">
                 <span id="selectAllLabel">Select All</span>
@@ -738,7 +751,8 @@ let pendingFile     = null;
 let currentGalleryPage = 0;
 let mapLazyObserver    = null;
 const GALLERY_PAGE_SIZE = 20;
-let selectedHouseIds = new Set();
+let selectedHouseIds  = new Set();
+let deletedBoundaries = [];   // snapshots of deleted houses for audit export
 
 // ── Screen management ─────────────────────────────
 function showScreen(id) {
@@ -1778,6 +1792,8 @@ function buildGallery() {
     });
     renderGalleryBatch(0, GALLERY_PAGE_SIZE);
     updateLoadMoreButton();
+    updateDeletedBadge();
+    fetchDeletedCount();
     showScreen('galleryScreen');
 }
 
@@ -1897,12 +1913,15 @@ async function saveToDb(houseId) {
 async function deleteHouse(houseId) {
     const house=boundaries.find(h=>h.id===houseId);
     if(!house||!confirm(`Delete house #${houseId}?`)) return;
+    const snapshot = _snapshotHouse(house, new Date().toISOString());
     if(house.dbId&&dbOnline) await fetch(`${API}/houses/${house.dbId}`,{method:'DELETE'});
+    deletedBoundaries.push(snapshot);
     boundaries=boundaries.filter(h=>h.id!==houseId);
     allMaps=allMaps.filter(m=>{ if(m._houseRef===house){try{m.remove()}catch{} return false;} return true; });
     const row=document.getElementById(`row-${houseId}`); if(row) row.remove();
     selectedHouseIds.delete(houseId);
     updateBulkBar();
+    updateDeletedBadge();
     document.getElementById('houseCount').textContent=`${boundaries.length} house${boundaries.length!==1?'s':''} loaded`;
 }
 
@@ -1979,12 +1998,15 @@ async function bulkDeleteSelected() {
 
     const ids = [...selectedHouseIds];
     let deleted = 0;
+    const ts = new Date().toISOString();
     for (const houseId of ids) {
         const house = boundaries.find(h => h.id === houseId);
         if (!house) continue;
+        const snapshot = _snapshotHouse(house, ts);
         if (house.dbId && dbOnline) {
             try { await fetch(`${API}/houses/${house.dbId}`, { method: 'DELETE' }); } catch {}
         }
+        deletedBoundaries.push(snapshot);
         boundaries = boundaries.filter(h => h.id !== houseId);
         allMaps = allMaps.filter(m => {
             if (m._houseRef === house) { try { m.remove(); } catch {} return false; }
@@ -1997,10 +2019,59 @@ async function bulkDeleteSelected() {
     }
     updateBulkBar();
     syncSelectAllCheckbox();
+    updateDeletedBadge();
     document.getElementById('houseCount').textContent = `${boundaries.length} house${boundaries.length !== 1 ? 's' : ''} loaded`;
     showToast(`Deleted ${deleted} house${deleted !== 1 ? 's' : ''} ✓`, 'success');
 }
 
+
+// ── Deletion audit helpers ────────────────────────
+function _snapshotHouse(house, deletedAt) {
+    const pts = [...house.coords, house.coords[0]];
+    const wkt = `POLYGON ((${pts.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
+    return { house, wkt, deletedAt };
+}
+
+function updateDeletedBadge() {
+    const badge  = document.getElementById('deletedBadge');
+    const numEl  = document.getElementById('deletedBadgeNum');
+    const n = deletedBoundaries.length;
+    if (!badge) return;
+    if (n > 0) {
+        numEl.textContent = n;
+        badge.classList.add('show');
+    } else {
+        badge.classList.remove('show');
+    }
+}
+
+async function clearDeletionLog() {
+    if (deletedBoundaries.length === 0) return;
+    if (!confirm(`Clear the deletion log (${deletedBoundaries.length} record${deletedBoundaries.length !== 1 ? 's' : ''})?\n\nThese entries will NOT appear in the next export.`)) return;
+    if (dbOnline) {
+        try { await fetch(`${API}/deleted`, { method: 'DELETE' }); } catch {}
+    }
+    deletedBoundaries = [];
+    updateDeletedBadge();
+    showToast('Deletion log cleared', 'info');
+}
+
+async function fetchDeletedCount() {
+    if (!dbOnline) return;
+    try {
+        const r = await fetch(`${API}/deleted/count`);
+        if (!r.ok) return;
+        const { count } = await r.json();
+        // Seed local counter from DB so badge is accurate after reload
+        // We don't reconstruct full snapshots here; just reflect the count in badge
+        if (count > 0 && deletedBoundaries.length === 0) {
+            // Show a placeholder badge count sourced from DB
+            const badge = document.getElementById('deletedBadge');
+            const numEl = document.getElementById('deletedBadgeNum');
+            if (badge && numEl) { numEl.textContent = count; badge.classList.add('show'); }
+        }
+    } catch {}
+}
 
 // ── Area field ────────────────────────────────────
 async function saveArea(houseId, value) {
@@ -2119,17 +2190,17 @@ function exportCSV() {
         'constructed_2023','constructed_2024','constructed_2025',
         'sam_status','sam_score','sam_iou','covered_pct',
         'sam_bbox_wkt','sam_mask_path','sam_rotation_deg','sam_error',
-        'created_at','updated_at'
+        'created_at','updated_at',
+        '_record_status','deleted_at','deleted_reason'
     ];
     function csvEsc(v) {
         const s = v == null ? '' : String(v);
         return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
     }
-    const rows = boundaries.map(h => {
-        const pts = [...h.coords, h.coords[0]];
-        const currentWkt = `POLYGON ((${pts.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
+    function houseRow(h, wktOverride, status, deletedAt, deletedReason) {
+        const pts = wktOverride ? null : [...h.coords, h.coords[0]];
+        const currentWkt = wktOverride || `POLYGON ((${pts.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
         const hts = h.heights || {};
-        // Reconstruct WKT from original coords if we have them (loaded from re-imported CSV)
         const origBndWkt = (() => {
             if (!h.original_coords || !h.original_coords.length) return '';
             const pp = [...h.original_coords, h.original_coords[0]];
@@ -2143,22 +2214,24 @@ function exportCSV() {
         return [
             h.dbId ?? h.id ?? '', h.label || '',
             h.point_id || '', h.cluster_id || '', h.plot_index ?? '',
-            origBndWkt,
-            currentWkt,
-            h.boundary_edited || 0,
+            origBndWkt, currentWkt, h.boundary_edited || 0,
             h.sam_area_m2 ?? '', h.plot_area_m2 ?? '',
-            origMaskWkt,
-            h.sam_mask_wkt || '', h.mask_edited || 0,
+            origMaskWkt, h.sam_mask_wkt || '', h.mask_edited || 0,
             hts[2023]?.m ?? '', hts[2023]?.cls || '', hts[2023]?.src || '',
             hts[2024]?.m ?? '', hts[2024]?.cls || '', hts[2024]?.src || '',
             hts[2025]?.m ?? '', hts[2025]?.cls || '', hts[2025]?.src || '',
             h.constructed_2023 || '', h.constructed_2024 || '', h.constructed_2025 || '',
             h.sam_status || '', h.sam_score ?? '', h.sam_iou ?? '', h.covered_pct ?? '',
             h.sam_bbox_wkt || '', h.sam_mask_path || '', h.sam_rotation_deg ?? '', h.sam_error || '',
-            '', ''  // created_at / updated_at — only available from DB
+            '', '',  // created_at / updated_at — only available from DB
+            status, deletedAt || '', deletedReason || ''
         ].map(csvEsc).join(',');
-    });
-    const blob = new Blob([headers.join(',') + '\n' + rows.join('\n')], {type: 'text/csv'});
+    }
+    const activeRows  = boundaries.map(h => houseRow(h, null, 'active', '', ''));
+    const deletedRows = deletedBoundaries.map(({ house: h, wkt, deletedAt }) =>
+        houseRow(h, wkt, 'deleted', deletedAt, 'manual')
+    );
+    const blob = new Blob([[headers.join(','), ...activeRows, ...deletedRows].join('\n')], {type: 'text/csv'});
     const a    = document.createElement('a');
     a.href     = URL.createObjectURL(blob);
     a.download = 'satview_export.csv';
@@ -2361,10 +2434,13 @@ function resetView() {
     if (mapLazyObserver) { mapLazyObserver.disconnect(); mapLazyObserver = null; }
     allMaps.forEach(m => { try { m.remove(); } catch {} });
     allMaps = []; boundaries = []; dupeCheckData = null; dupeResolutions = {};
+    deletedBoundaries = [];
+    selectedHouseIds.clear();
     currentGalleryPage = 0;
     document.getElementById('fileInput').value  = '';
     document.getElementById('fileInput2').value = '';
     document.getElementById('loadMoreBar').style.display = 'none';
+    updateDeletedBadge();
     showScreen('uploadScreen');
     refreshDbCount();
 }
