@@ -14,8 +14,8 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 import xml.dom.minidom as minidom
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-DEFAULT_INPUT_CSV  = 'satview/MODELTOWN_satview_export_FINAL.csv'
-DEFAULT_OUTPUT_KML = 'satview/MODELTOWN_satview_export_FINAL.kml'
+DEFAULT_INPUT_CSV  = 'satview/GULBERG_I_II_satview_export (11)_after_fixing_deletion_bug - satview_export (11).csv.csv'
+DEFAULT_OUTPUT_KML = 'satview/GULBERG_I_II_satview_export (11)_after_fixing_deletion_bug - satview_export (11).csv.kml'
 
 INPUT_CSV  = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_INPUT_CSV
 OUTPUT_KML = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_OUTPUT_KML
