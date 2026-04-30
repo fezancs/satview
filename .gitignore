@@ -1,15 +1,32 @@
-# Python
-*.pyc
-__pycache__/
-
-# SQLite database & WAL files
+# Data files - never push
+*.csv
+*.xlsx
+*.xls
+*.kml
 *.db
 *.db-shm
 *.db-wal
 
-# macOS
-.DS_Store
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+venv/
+env/
 
-# Data exports / large input files (not source code)
-*.csv
-*.kml
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local

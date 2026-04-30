@@ -193,6 +193,14 @@ input[type="file"] { display:none; }
 .mask-edit-btn { position:absolute; top:7px; right:70px; z-index:600; font-family:'Space Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; background:rgba(191,95,255,.15); color:var(--c25); border:1px solid rgba(191,95,255,.4); transition:all .2s; }
 .mask-edit-btn:hover { background:rgba(191,95,255,.3); }
 .mask-edit-btn.active { background:rgba(168,255,62,.2); color:var(--c23); border-color:rgba(168,255,62,.5); }
+.mask-toolbar { position:absolute; top:30px; right:70px; z-index:600; display:none; flex-direction:column; gap:3px; }
+.mask-tool-btn { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.mask-tool-pts  { background:rgba(191,95,255,.12); color:var(--c25); border:1px solid rgba(191,95,255,.35); }
+.mask-tool-pts.active  { background:rgba(191,95,255,.38); }
+.mask-tool-draw { background:rgba(0,229,255,.1); color:var(--c24); border:1px solid rgba(0,229,255,.3); }
+.mask-tool-draw.active { background:rgba(0,229,255,.35); }
+.mask-tool-clear{ background:rgba(255,61,113,.1); color:var(--c22); border:1px solid rgba(255,61,113,.3); }
+.mask-tool-clear:hover { background:rgba(255,61,113,.28); }
 .brush-toolbar { position:absolute; top:30px; right:7px; z-index:600; display:none; flex-direction:column; gap:4px; }
 .tool-row { display:flex; gap:3px; align-items:center; }
 .brush-btn { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all .15s; }
@@ -1046,41 +1054,49 @@ async function loadFromDatabase() {
         // Support both old (array) and new (paginated object) response formats
         const rows = Array.isArray(data) ? data : (data.items || []);
         if (!rows.length) { hideProgress(); showAlert('Database is empty.','info'); return; }
-        boundaries = rows.map(r => ({
-            id:r.id, label:r.label,
-            coords:r.coords,
-            dbId:r.id, dirty:false, mask_dirty:false,
-            point_id:    r.point_id    || '',
-            cluster_id:  r.cluster_id  || '',
-            plot_index:  r.plot_index  ?? null,
-            // SAM pipeline
-            sam_status:  r.sam_status  || null,
-            sam_score:   r.sam_score   ?? null,
-            sam_area_m2: r.sam_area_m2 ?? null,
-            sam_mask_wkt: r.sam_mask_wkt || '',
-            mask_coords: r.sam_mask_wkt ? parseWKT(r.sam_mask_wkt) : null,
-            original_coords:      r.polygon_wkt_original    ? parseWKT(r.polygon_wkt_original)    : null,
-            original_mask_coords: r.sam_mask_wkt_original   ? parseWKT(r.sam_mask_wkt_original)   : null,
-            sam_iou:       r.sam_iou       ?? null,
-            covered_pct:   r.covered_pct   ?? null,
-            sam_bbox_wkt:  r.sam_bbox_wkt  || '',
-            sam_mask_path: r.sam_mask_path || '',
-            sam_rotation_deg: r.sam_rotation_deg ?? null,
-            sam_error:     r.sam_error     || null,
-            plot_area_m2:  r.plot_area_m2  ?? null,
-            // Traceability
-            boundary_edited: r.boundary_edited || 0,
-            mask_edited:     r.mask_edited     || 0,
-            // Construction status
-            constructed_2023: r.constructed_2023 || null,
-            constructed_2024: r.constructed_2024 || null,
-            constructed_2025: r.constructed_2025 || null,
-            heights: {
-                2025: { m: r.height_m_2025, cls: r.height_class_2025, src: r.height_src_2025 },
-                2024: { m: r.height_m_2024, cls: r.height_class_2024, src: r.height_src_2024 },
-                2023: { m: r.height_m_2023, cls: r.height_class_2023, src: r.height_src_2023 },
-            }
-        }));
+        boundaries = rows.map(r => {
+            const ec = r.extra_columns || {};
+            const inputLat = ec.latitude  ? parseFloat(ec.latitude)  : null;
+            const inputLon = ec.longitude ? parseFloat(ec.longitude) : null;
+            return {
+                id:r.id, label:r.label,
+                coords:r.coords,
+                dbId:r.id, dirty:false, mask_dirty:false,
+                point_id:    r.point_id    || '',
+                cluster_id:  r.cluster_id  || '',
+                plot_index:  r.plot_index  ?? null,
+                // GPS point from original client file
+                input_lat:  isFinite(inputLat)  ? inputLat  : null,
+                input_lon:  isFinite(inputLon)  ? inputLon  : null,
+                match_type: ec._match_type || null,
+                extra_columns: ec,
+                // SAM pipeline
+                sam_status:  r.sam_status  || null,
+                sam_score:   r.sam_score   ?? null,
+                sam_area_m2: r.sam_area_m2 ?? null,
+                sam_mask_wkt: r.sam_mask_wkt || '',
+                mask_coords: r.sam_mask_wkt ? parseWKT(r.sam_mask_wkt) : null,
+                original_coords:      r.polygon_wkt_original    ? parseWKT(r.polygon_wkt_original)    : null,
+                original_mask_coords: r.sam_mask_wkt_original   ? parseWKT(r.sam_mask_wkt_original)   : null,
+                sam_iou:       r.sam_iou       ?? null,
+                covered_pct:   r.covered_pct   ?? null,
+                sam_bbox_wkt:  r.sam_bbox_wkt  || '',
+                sam_mask_path: r.sam_mask_path || '',
+                sam_rotation_deg: r.sam_rotation_deg ?? null,
+                sam_error:     r.sam_error     || null,
+                plot_area_m2:  r.plot_area_m2  ?? null,
+                boundary_edited: r.boundary_edited || 0,
+                mask_edited:     r.mask_edited     || 0,
+                constructed_2023: r.constructed_2023 || null,
+                constructed_2024: r.constructed_2024 || null,
+                constructed_2025: r.constructed_2025 || null,
+                heights: {
+                    2025: { m: r.height_m_2025, cls: r.height_class_2025, src: r.height_src_2025 },
+                    2024: { m: r.height_m_2024, cls: r.height_class_2024, src: r.height_src_2024 },
+                    2023: { m: r.height_m_2023, cls: r.height_class_2023, src: r.height_src_2023 },
+                }
+            };
+        });
         await launchGallery();
         hideProgress();
     } catch(e) { hideProgress(); showAlert('DB load failed: '+e.message,'error'); }
@@ -1122,11 +1138,12 @@ function parseCSVText(text) {
     const isNewFormat = headerLow.includes('point_id') && headerLow.includes('polygon_wkt');
 
     if (isNewFormat) {
-        const cols = parseCSVRow(lines[0]).map(c => c.trim().toLowerCase());
+        // Keep ORIGINAL case column names for preserving exact client column names in extra_columns
+        const colsOrig = parseCSVRow(lines[0]).map(c => c.trim());
+        const cols     = colsOrig.map(c => c.toLowerCase());
         const ci = (name) => cols.indexOf(name);
         const getStr = (vals, name) => { const idx = ci(name); return idx >= 0 ? (vals[idx]||'').trim() : ''; };
         const getNum = (vals, name) => { const v = getStr(vals, name); return v ? parseFloat(v) : null; };
-        // Normalise constructed status — only accept the two valid string values
         const getConstructed = (vals, name) => {
             const v = getStr(vals, name).toLowerCase();
             return (v === 'constructed' || v === 'non_constructed') ? v : null;
@@ -1139,14 +1156,22 @@ function parseCSVText(text) {
             const pointId  = getStr(vals, 'point_id');
             const plotIdx  = getStr(vals, 'plot_index');
             const csvLabel = getStr(vals, 'label');
-            // Prefer label stored in CSV (round-trip), fall back to computed
             const label = csvLabel || (pointId ? `${pointId} #${plotIdx}` : `House ${i+1}`);
             const maskWkt = getStr(vals, 'sam_mask_wkt');
+            // Build extra_columns: all original columns keyed by ORIGINAL (case-preserved) name
+            const extra_columns = {};
+            colsOrig.forEach((origCol, idx) => { extra_columns[origCol] = (vals[idx] || '').trim(); });
             houses.push({
                 id: null, label, coords, dbId: null, dirty: false, mask_dirty: false,
                 point_id:    pointId,
                 cluster_id:  getStr(vals, 'cluster_id'),
                 plot_index:  plotIdx !== '' ? parseInt(plotIdx) : null,
+                // GPS point from the original client file
+                input_lat:   getNum(vals, 'latitude'),
+                input_lon:   getNum(vals, 'longitude'),
+                match_type:  getStr(vals, '_match_type') || null,
+                // All original columns (for round-trip export)
+                extra_columns,
                 // SAM pipeline
                 sam_status:  getStr(vals, 'sam_status') || null,
                 sam_score:   getNum(vals, 'sam_score'),
@@ -1162,10 +1187,8 @@ function parseCSVText(text) {
                 sam_rotation_deg: getNum(vals, 'sam_rotation_deg'),
                 sam_error:      getStr(vals, 'sam_error') || null,
                 plot_area_m2:   getNum(vals, 'plot_area_m2'),
-                // Traceability flags (carry over from re-imported export)
                 boundary_edited: parseInt(getStr(vals, 'boundary_edited')) || 0,
                 mask_edited:     parseInt(getStr(vals, 'mask_edited'))     || 0,
-                // Construction status
                 constructed_2023: getConstructed(vals, 'constructed_2023'),
                 constructed_2024: getConstructed(vals, 'constructed_2024'),
                 constructed_2025: getConstructed(vals, 'constructed_2025'),
@@ -1259,6 +1282,22 @@ function buildMap(divId, house, year, isEditSource) {
         const m = L.circleMarker(c,{radius:0,opacity:0,fillOpacity:0}).addTo(map);
         m._ci=ci; return m;
     });
+
+    // ── Input point marker (GPS point from client's original file) ─────────────
+    if (house.input_lat != null && house.input_lon != null) {
+        const mt = house.match_type || '';
+        const markerColor = mt === 'contains' ? '#a8ff3e' : mt === 'nearest' ? '#ff9500' : '#00e5ff';
+        const inputPt = L.marker([house.input_lat, house.input_lon], {
+            interactive: false,
+            icon: L.divIcon({
+                className: '',
+                html: `<div style="width:14px;height:14px;border-radius:50%;background:${markerColor};border:2.5px solid rgba(0,0,0,0.7);box-shadow:0 0 0 2px ${markerColor}55,0 0 8px ${markerColor}88;pointer-events:none;"></div>`,
+                iconSize: [14, 14], iconAnchor: [7, 7]
+            })
+        }).addTo(map);
+        map._inputPtMarker = inputPt;
+    }
+
     map.fitBounds(L.latLngBounds(house.coords),{padding:[22,22]});
     allMaps.push(map); return map;
 }
@@ -1585,28 +1624,33 @@ function cleanupMaskHandles(map) {
 }
 
 function toggleMaskEdit(houseId) {
-    const house    = boundaries.find(h => h.id === houseId);
-    const editMap  = allMaps.find(m => m._houseRef === house && m._isEditSource);
-    if (!editMap || !house.mask_coords || !house.mask_coords.length) return;
+    const house   = boundaries.find(h => h.id === houseId);
+    const editMap = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!editMap) return;
 
     const on = !editMap._maskEditMode;
 
     // Boundary edit and mask edit are mutually exclusive
     if (on && editMap._editMode) {
         setEditMode(editMap, false);
-        const editBtn  = document.getElementById(`editbtn-${houseId}`);
-        const hintDiv  = document.getElementById(`hint-${houseId}`);
+        const editBtn = document.getElementById(`editbtn-${houseId}`);
+        const hintDiv = document.getElementById(`hint-${houseId}`);
         if (editBtn) { editBtn.textContent = '✎ Edit'; editBtn.classList.remove('active'); }
         if (hintDiv) hintDiv.style.display = 'none';
     }
 
     editMap._maskEditMode = on;
-    const btn = document.getElementById(`maskeditbtn-${houseId}`);
-    if (btn) { btn.classList.toggle('active', on); btn.textContent = on ? '✓ Done Mask' : '⬟ Mask'; }
+    const btn      = document.getElementById(`maskeditbtn-${houseId}`);
+    const toolbar  = document.getElementById(`mask-hint-${houseId}`);
+    if (btn)     { btn.classList.toggle('active', on); btn.textContent = on ? '✓ Done' : '⬟ Mask'; }
+    if (toolbar) toolbar.style.display = on ? 'flex' : 'none';
 
     if (on) {
-        setupMaskHandles(editMap);
+        // Default: edit points if mask exists, draw mode if no mask yet
+        const defaultTool = (house.mask_coords && house.mask_coords.length >= 3) ? 'points' : 'draw';
+        setMaskTool(houseId, defaultTool);
     } else {
+        cleanupMaskDraw(editMap);
         cleanupMaskHandles(editMap);
         if (house.mask_dirty) {
             if (dbOnline && house.dbId) {
@@ -1616,6 +1660,185 @@ function toggleMaskEdit(houseId) {
                 house.mask_dirty = false;
             }
         }
+    }
+}
+
+function setMaskTool(houseId, tool) {
+    const house   = boundaries.find(h => h.id === houseId);
+    const editMap = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!editMap || !editMap._maskEditMode) return;
+
+    // Deactivate both tools first
+    cleanupMaskDraw(editMap);
+    cleanupMaskHandles(editMap);
+
+    // Update button styles
+    document.getElementById(`mbt-pts-${houseId}`)?.classList.toggle('active', tool === 'points');
+    document.getElementById(`mbt-draw-${houseId}`)?.classList.toggle('active', tool === 'draw');
+
+    editMap._maskTool = tool;
+
+    if (tool === 'points') {
+        if (house.mask_coords && house.mask_coords.length >= 3) {
+            setupMaskHandles(editMap);
+        } else {
+            showToast('No mask yet — use ✏ Draw New to create one', 'info');
+        }
+    } else if (tool === 'draw') {
+        setupMaskDraw(editMap, houseId);
+    }
+}
+
+// ── Draw-new-mask mode ────────────────────────────
+function setupMaskDraw(map, houseId) {
+    const house = map._houseRef;
+    const color = map._color || 'var(--c25)';
+    let drawCoords = [];   // [[lat, lon], …]
+    let vertexMarkers = [];
+    let previewPoly   = null;
+    let rubberbandLyr = null; // line from last point to cursor
+    map.getContainer().style.cursor = 'crosshair';
+    map.dragging.enable();
+    map.scrollWheelZoom.enable();
+
+    // Show hint
+    showToast('Click to add points · Double-click to finish · Esc to cancel', 'info', 5000);
+
+    function updatePreviewPoly() {
+        if (previewPoly) { try { map.removeLayer(previewPoly); } catch {} previewPoly = null; }
+        if (drawCoords.length >= 3) {
+            previewPoly = L.polygon(drawCoords, {
+                color, weight: 2, dashArray: '6,4',
+                fillColor: color, fillOpacity: 0.18, interactive: false
+            }).addTo(map);
+        }
+    }
+
+    function onMouseMove(e) {
+        if (rubberbandLyr) { try { map.removeLayer(rubberbandLyr); } catch {} rubberbandLyr = null; }
+        if (drawCoords.length > 0) {
+            const last = drawCoords[drawCoords.length - 1];
+            rubberbandLyr = L.polyline([last, [e.latlng.lat, e.latlng.lng]], {
+                color, weight: 1.5, dashArray: '4,4', opacity: 0.7, interactive: false
+            }).addTo(map);
+        }
+    }
+
+    // Debounce clicks: ignore the second click of a double-click
+    let _lastClickTime = 0;
+    function onClick(e) {
+        const now = Date.now();
+        // If two clicks arrive within 350ms, it's a double-click — skip this one
+        if (now - _lastClickTime < 350) return;
+        _lastClickTime = now;
+
+        const ll = e.latlng;
+        drawCoords.push([ll.lat, ll.lng]);
+        const vm = L.circleMarker([ll.lat, ll.lng], {
+            radius: 5, color: '#fff', fillColor: color, fillOpacity: 1,
+            weight: 2, interactive: false
+        }).addTo(map);
+        vertexMarkers.push(vm);
+        updatePreviewPoly();
+    }
+
+    function onDblClick(e) {
+        L.DomEvent.stop(e);
+        // Remove the extra point added by the second click of the dblclick
+        if (drawCoords.length > 0) {
+            drawCoords.pop();
+            const lastVm = vertexMarkers.pop();
+            if (lastVm) try { map.removeLayer(lastVm); } catch {}
+        }
+        if (drawCoords.length < 3) {
+            showToast('Need at least 3 points — keep clicking', 'warn');
+            return;
+        }
+        commitDraw();
+    }
+
+    function onKeyDown(e) {
+        if (e.key === 'Escape') { cancelDraw(); }
+        else if (e.key === 'Enter' && drawCoords.length >= 3) { commitDraw(); }
+    }
+
+    function commitDraw() {
+        cleanup();
+        house.mask_coords = drawCoords.slice();
+        house.sam_mask_wkt = _maskCoordsToWkt(house.mask_coords);
+        house.mask_edited  = 1;
+        house.mask_dirty   = true;
+        map._redraw();
+        allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
+
+        // Update mask-edit button visibility on the label (it's always shown now)
+        // Switch to point-edit so researcher can fine-tune immediately
+        if (houseId) setMaskTool(houseId, 'points');
+        showToast('Mask drawn ✓ — now in Edit Points mode to fine-tune', 'success');
+    }
+
+    function cancelDraw() {
+        cleanup();
+        showToast('Draw cancelled', 'info');
+    }
+
+    function cleanup() {
+        map.off('click', onClick);
+        map.off('dblclick', onDblClick);
+        map.off('mousemove', onMouseMove);
+        document.removeEventListener('keydown', onKeyDown);
+        vertexMarkers.forEach(vm => { try { map.removeLayer(vm); } catch {} });
+        vertexMarkers = [];
+        if (previewPoly)   { try { map.removeLayer(previewPoly); }   catch {} previewPoly   = null; }
+        if (rubberbandLyr) { try { map.removeLayer(rubberbandLyr); } catch {} rubberbandLyr = null; }
+        map.getContainer().style.cursor = '';
+        map._maskDrawCleanup = null;
+    }
+
+    map.on('click',     onClick);
+    map.on('dblclick',  onDblClick);
+    map.on('mousemove', onMouseMove);
+    document.addEventListener('keydown', onKeyDown);
+    map._maskDrawCleanup = cleanup;
+}
+
+function cleanupMaskDraw(map) {
+    if (map._maskDrawCleanup) { map._maskDrawCleanup(); map._maskDrawCleanup = null; }
+}
+
+// ── Clear mask ────────────────────────────────────
+function clearMask(houseId) {
+    const house   = boundaries.find(h => h.id === houseId);
+    const editMap = allMaps.find(m => m._houseRef === house && m._isEditSource);
+    if (!house) return;
+    if (!confirm('Delete the current mask for this house?')) return;
+
+    cleanupMaskDraw(editMap);
+    cleanupMaskHandles(editMap);
+
+    house.mask_coords  = null;
+    house.sam_mask_wkt = '';
+    house.mask_edited  = 1;
+    house.mask_dirty   = true;
+
+    if (editMap) editMap._redraw();
+    allMaps.forEach(om => { if (om !== editMap && om._houseRef === house) om._sync(); });
+
+    // Switch to draw mode automatically after clearing
+    if (editMap && editMap._maskEditMode) setMaskTool(houseId, 'draw');
+
+    // Persist immediately if online
+    if (dbOnline && house.dbId) {
+        fetch(`${API}/houses/${house.dbId}/meta`, {
+            method: 'PATCH', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({field: 'sam_mask_wkt', value: ''})
+        }).then(() => {
+            house.mask_dirty = false;
+            showToast('Mask cleared ✓', 'success');
+        }).catch(() => showToast('Mask cleared locally — save failed', 'warn'));
+    } else {
+        house.mask_dirty = false;
+        showToast('Mask cleared ✓', 'success');
     }
 }
 
@@ -1701,6 +1924,16 @@ function renderGalleryBatch(startIdx, batchSize) {
             house.mask_edited     ? `<span style="font-family:'Space Mono',monospace;font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(191,95,255,.12);border:1px solid rgba(191,95,255,.35);color:var(--c25);">▲ mask edited</span>` : '',
         ].filter(Boolean).join('');
         const editBadgeLine = editBadges ? `<div style="display:flex;flex-direction:column;gap:3px;margin-top:3px;">${editBadges}</div>` : '';
+        // Match type badge (contains = high-confidence, nearest = lower confidence)
+        const mt = house.match_type || '';
+        const matchBadge = mt ? (() => {
+            const isContains = mt === 'contains';
+            const clr = isContains ? '#a8ff3e' : '#ff9500';
+            const bg  = isContains ? 'rgba(168,255,62,.1)' : 'rgba(255,149,0,.1)';
+            const bdr = isContains ? 'rgba(168,255,62,.3)' : 'rgba(255,149,0,.3)';
+            return `<span style="font-family:'Space Mono',monospace;font-size:8px;padding:1px 5px;border-radius:3px;background:${bg};border:1px solid ${bdr};color:${clr};">⬤ ${mt}</span>`;
+        })() : '';
+        const matchBadgeLine = matchBadge ? `<div style="margin-top:3px;">${matchBadge}</div>` : '';
         const label     = document.createElement('div');
         label.className = 'house-label';
         label.innerHTML = `
@@ -1714,6 +1947,7 @@ function renderGalleryBatch(startIdx, batchSize) {
             <div class="hl-name">${house.label||''}</div>
             ${metaLine}
             ${editBadgeLine}
+            ${matchBadgeLine}
             <div class="hl-coords" id="coords-${house.id}">${center.lat}<br>${center.lon}</div>
             <div class="hl-actions">
                 <div class="hl-btn hl-btn-save" id="save-btn-${house.id}" onclick="saveToDb(${house.id})">💾 Save to DB</div>
@@ -1748,8 +1982,18 @@ function renderGalleryBatch(startIdx, batchSize) {
                     <div id="${mapId}" class="lmap"></div>
                     <div class="map-badge ${BCLASS[year]}">${year}</div>
                     <div class="src-badge" id="src-badge-${mapId}">${conf.label}</div>
+                    ${isFirst && house.input_lat != null ? (() => {
+                        const mt = house.match_type || '';
+                        const clr = mt === 'contains' ? '#a8ff3e' : mt === 'nearest' ? '#ff9500' : '#00e5ff';
+                        return `<div style="position:absolute;bottom:36px;right:6px;z-index:500;font-family:'Space Mono',monospace;font-size:8px;display:flex;align-items:center;gap:4px;background:rgba(10,12,15,.82);padding:3px 6px;border-radius:4px;pointer-events:none;"><span style="width:9px;height:9px;border-radius:50%;background:${clr};display:inline-block;flex-shrink:0;"></span><span style="color:${clr};">${mt || 'input pt'}</span></div>`;
+                    })() : ''}
                     ${isFirst ? `<button class="edit-btn" id="editbtn-${house.id}" onclick="toggleEdit(${house.id})">✎ Edit</button>
-                    ${house.mask_coords ? `<button class="mask-edit-btn" id="maskeditbtn-${house.id}" onclick="toggleMaskEdit(${house.id})">⬟ Mask</button>` : ''}
+                    <button class="mask-edit-btn" id="maskeditbtn-${house.id}" onclick="toggleMaskEdit(${house.id})">⬟ Mask</button>
+                    <div class="mask-toolbar" id="mask-hint-${house.id}">
+                        <button class="mask-tool-btn mask-tool-pts" id="mbt-pts-${house.id}" onclick="setMaskTool(${house.id},'points')">◈ Edit Pts</button>
+                        <button class="mask-tool-btn mask-tool-draw" id="mbt-draw-${house.id}" onclick="setMaskTool(${house.id},'draw')">✏ Draw New</button>
+                        <button class="mask-tool-btn mask-tool-clear" onclick="clearMask(${house.id})">🗑 Clear</button>
+                    </div>
                     <div class="brush-toolbar" id="hint-${house.id}">
                         <div class="tool-row">
                             <button class="brush-btn tool-btn active" id="tool-point-${house.id}" onclick="setEditTool(${house.id},'point')">◈ Points</button>
@@ -1877,7 +2121,10 @@ async function saveToDb(houseId) {
     if(saveBtn) saveBtn.style.display='none';
 
     try {
-        const payload={coords:house.coords,label:house.label};
+        const payload = {
+            coords: house.coords, label: house.label,
+            extra_columns_json: house.extra_columns ? JSON.stringify(house.extra_columns) : null,
+        };
         let res;
         if(house.dbId) {
             res=await fetch(`${API}/houses/${house.dbId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -2179,8 +2426,9 @@ async function toggleconstructed(houseId, year) {
 // ── Export ────────────────────────────────────────
 function exportCSV() {
     if (dbOnline) { window.open(`${API}/export/csv`, '_blank'); return; }
-    // Offline fallback — mirrors the backend export column order exactly
-    const headers = [
+
+    // SatView schema columns (must not duplicate from client columns)
+    const SATVIEW_SCHEMA_LOWER = new Set([
         'id','label','point_id','cluster_id','plot_index',
         'polygon_wkt_original','polygon_wkt','boundary_edited','sam_area_m2','plot_area_m2',
         'sam_mask_wkt_original','sam_mask_wkt','mask_edited',
@@ -2190,14 +2438,41 @@ function exportCSV() {
         'constructed_2023','constructed_2024','constructed_2025',
         'sam_status','sam_score','sam_iou','covered_pct',
         'sam_bbox_wkt','sam_mask_path','sam_rotation_deg','sam_error',
-        'created_at','updated_at',
-        '_record_status','deleted_at','deleted_reason'
+        'created_at','updated_at','_record_status','deleted_at','deleted_reason',
+        'extra_columns_json','coords_json',
+    ]);
+
+    // Collect ALL original client column names (in first-seen order) — no exclusions
+    const seenCols = new Set(), clientCols = [];
+    const allHouses = [...boundaries, ...deletedBoundaries.map(d => d.house)];
+    allHouses.forEach(h => {
+        const ec = h.extra_columns || {};
+        Object.keys(ec).forEach(k => {
+            if (!seenCols.has(k)) { seenCols.add(k); clientCols.push(k); }
+        });
+    });
+
+    const satviewCols = [
+        'id','label','point_id','cluster_id','plot_index',
+        'polygon_wkt_original','polygon_wkt','boundary_edited','sam_area_m2','plot_area_m2',
+        'sam_mask_wkt_original','sam_mask_wkt','mask_edited',
+        'height_m_2023','height_class_2023','height_src_2023',
+        'height_m_2024','height_class_2024','height_src_2024',
+        'height_m_2025','height_class_2025','height_src_2025',
+        'constructed_2023','constructed_2024','constructed_2025',
+        'sam_status','sam_score','sam_iou','covered_pct',
+        'sam_bbox_wkt','sam_mask_path','sam_rotation_deg','sam_error',
+        'created_at','updated_at','_record_status','deleted_at','deleted_reason'
     ];
+    const headers = [...clientCols, ...satviewCols];
+
     function csvEsc(v) {
         const s = v == null ? '' : String(v);
         return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
     }
+
     function houseRow(h, wktOverride, status, deletedAt, deletedReason) {
+        const ec  = h.extra_columns || {};
         const pts = wktOverride ? null : [...h.coords, h.coords[0]];
         const currentWkt = wktOverride || `POLYGON ((${pts.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
         const hts = h.heights || {};
@@ -2211,7 +2486,8 @@ function exportCSV() {
             const pp = [...h.original_mask_coords, h.original_mask_coords[0]];
             return `POLYGON ((${pp.map(c => `${c[1].toFixed(10)} ${c[0].toFixed(10)}`).join(', ')}))`;
         })();
-        return [
+        const clientValues = clientCols.map(k => csvEsc(ec[k] ?? ''));
+        const satviewValues = [
             h.dbId ?? h.id ?? '', h.label || '',
             h.point_id || '', h.cluster_id || '', h.plot_index ?? '',
             origBndWkt, currentWkt, h.boundary_edited || 0,
@@ -2225,8 +2501,10 @@ function exportCSV() {
             h.sam_bbox_wkt || '', h.sam_mask_path || '', h.sam_rotation_deg ?? '', h.sam_error || '',
             '', '',  // created_at / updated_at — only available from DB
             status, deletedAt || '', deletedReason || ''
-        ].map(csvEsc).join(',');
+        ].map(csvEsc);
+        return [...clientValues, ...satviewValues].join(',');
     }
+
     const activeRows  = boundaries.map(h => houseRow(h, null, 'active', '', ''));
     const deletedRows = deletedBoundaries.map(({ house: h, wkt, deletedAt }) =>
         houseRow(h, wkt, 'deleted', deletedAt, 'manual')
@@ -2633,11 +2911,17 @@ function renderDedupePinHeader() {
     const c    = DS.currentData.candidates[0] || {};
     document.getElementById('dedupePinId').textContent = pin;
     document.getElementById('dedupeCandCount').textContent = `${DS.currentData.candidates.length} candidates`;
+    const lat = parseFloat(c.latitude), lon = parseFloat(c.longitude);
+    const hasGps = !isNaN(lat) && !isNaN(lon);
+    const matchType = c._match_type || '';
+    const mtColor = matchType === 'contains' ? 'var(--c23)' : matchType === 'nearest' ? '#ff9500' : 'var(--muted)';
     document.getElementById('dedupeTaxInfo').innerHTML =
         `<div class="dip-tax-cell"><strong>${c.circle_name || '—'}</strong></div>` +
         `<div class="dip-tax-cell">${c.locality_name || ''}</div>` +
         `<div class="dip-tax-cell">GARV: <strong>${c.garv || '—'}</strong></div>` +
         `<div class="dip-tax-cell">Tax: <strong>${c.total_property_tax || '—'}</strong></div>` +
+        (hasGps ? `<div class="dip-tax-cell" style="font-family:'Space Mono',monospace;font-size:9px;">📍 GPS: <span style="color:#ff3d71">${lat.toFixed(6)}, ${lon.toFixed(6)}</span></div>` : '') +
+        (matchType ? `<div class="dip-tax-cell">Match: <strong style="color:${mtColor}">${matchType}</strong>${matchType==='nearest'?' <span style="color:var(--muted);font-size:9px;">(point outside all polygons)</span>':''}</div>` : '') +
         `<div class="dip-tax-cell">Status: <strong style="color:${DS.currentData.status==='confirmed'?'var(--c23)':DS.currentData.status==='auto'?'#ff9500':'var(--c22)'}">${DS.currentData.status}</strong></div>`;
 }
 
@@ -2713,13 +2997,22 @@ function renderDedupeMap() {
         DS.layers[rank] = g;
     });
 
-    // Tax record point — red crosshair marker
+    // Client GPS point — shown prominently so researcher knows where the original point is
     const lat = parseFloat(cands[0]?.latitude);
     const lon = parseFloat(cands[0]?.longitude);
     if (!isNaN(lat) && !isNaN(lon)) {
-        DS.taxMarker = L.circleMarker([lat, lon], {
-            radius: 7, color: '#ff3d71', fillColor: '#ff3d71', fillOpacity: 0.85, weight: 2,
-        }).addTo(DS.map).bindTooltip('Tax Record Point', { permanent: false, direction: 'top' });
+        DS.taxMarker = L.marker([lat, lon], {
+            interactive: false,
+            zIndexOffset: 1000,
+            icon: L.divIcon({
+                className: '',
+                html: `<div style="display:flex;flex-direction:column;align-items:center;gap:0;pointer-events:none;">
+                    <div style="font-family:'Space Mono',monospace;font-size:9px;font-weight:700;color:#ff3d71;background:rgba(10,12,15,.9);padding:2px 6px;border-radius:4px;border:1px solid rgba(255,61,113,.5);white-space:nowrap;margin-bottom:3px;">📍 Client GPS</div>
+                    <div style="width:13px;height:13px;border-radius:50%;background:#ff3d71;border:2.5px solid #fff;box-shadow:0 0 0 2px #ff3d71,0 0 10px #ff3d7188;"></div>
+                </div>`,
+                iconSize: [80, 36], iconAnchor: [40, 36],
+            })
+        }).addTo(DS.map);
         bounds.push([lat, lon]);
     }
 
