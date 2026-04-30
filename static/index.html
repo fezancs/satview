@@ -201,6 +201,8 @@ input[type="file"] { display:none; }
 .mask-tool-draw.active { background:rgba(0,229,255,.35); }
 .mask-tool-clear{ background:rgba(255,61,113,.1); color:var(--c22); border:1px solid rgba(255,61,113,.3); }
 .mask-tool-clear:hover { background:rgba(255,61,113,.28); }
+.bnd-tool-draw { background:rgba(168,255,62,.1); color:var(--c23); border:1px solid rgba(168,255,62,.3); }
+.bnd-tool-draw.active { background:rgba(168,255,62,.38); border-color:rgba(168,255,62,.65); }
 .brush-toolbar { position:absolute; top:30px; right:7px; z-index:600; display:none; flex-direction:column; gap:4px; }
 .tool-row { display:flex; gap:3px; align-items:center; }
 .brush-btn { font-family:'Space Mono',monospace; font-size:8px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all .15s; }
@@ -1233,7 +1235,7 @@ function buildMap(divId, house, year, isEditSource) {
     map._houseRef=house; map._isEditSource=isEditSource; map._color=color; map._year=year; map._conf=conf;
 
     L.tileLayer(`${API}/tiles/${year}/{z}/{y}/{x}`,
-        {maxZoom:21, maxNativeZoom:19, attribution:`© Esri Wayback ${conf.label}`}).addTo(map);
+        {maxZoom:22, maxNativeZoom:21, attribution:`© Esri Wayback ${conf.label}`}).addTo(map);
 
     function redraw() {
         // Remove current layers
@@ -1328,7 +1330,13 @@ function activateEditTool(map, tool) {
         map.scrollWheelZoom.enable();
         map.getContainer().style.cursor = '';
         setupPointHandles(map);
+    } else if (tool === 'draw') {
+        map.dragging.enable();
+        map.scrollWheelZoom.enable();
+        map.getContainer().style.cursor = 'crosshair';
+        setupBoundaryDraw(map, map._houseRef.id);
     } else {
+        // brush
         map.dragging.disable();
         map.scrollWheelZoom.disable();
         map.getContainer().style.cursor = 'crosshair';
@@ -1339,6 +1347,7 @@ function activateEditTool(map, tool) {
 function deactivateEditTool(map) {
     cleanupBrush(map);
     cleanupPointHandles(map);
+    cleanupBoundaryDraw(map);
 }
 
 // ── Point-drag tool ───────────────────────────────
@@ -1501,6 +1510,7 @@ function setEditTool(houseId, tool) {
     if (!editMap) return;
     document.getElementById(`tool-point-${houseId}`)?.classList.toggle('active', tool === 'point');
     document.getElementById(`tool-brush-${houseId}`)?.classList.toggle('active', tool === 'brush');
+    document.getElementById(`tool-draw-${houseId}`)?.classList.toggle('active', tool === 'draw');
     const brushControls = document.getElementById(`brush-controls-${houseId}`);
     if (brushControls) brushControls.style.display = tool === 'brush' ? 'flex' : 'none';
     activateEditTool(editMap, tool);
@@ -1806,6 +1816,123 @@ function cleanupMaskDraw(map) {
     if (map._maskDrawCleanup) { map._maskDrawCleanup(); map._maskDrawCleanup = null; }
 }
 
+// ── Draw-new-boundary mode ─────────────────────────
+function setupBoundaryDraw(map, houseId) {
+    const house = map._houseRef;
+    const color = map._color;
+    let drawCoords    = [];
+    let vertexMarkers = [];
+    let previewPoly   = null;
+    let rubberbandLyr = null;
+
+    map.getContainer().style.cursor = 'crosshair';
+    map.dragging.enable();
+    map.scrollWheelZoom.enable();
+
+    showToast('Click to add boundary points · Double-click or Enter to finish · Esc to cancel', 'info', 5000);
+
+    function updatePreviewPoly() {
+        if (previewPoly) { try { map.removeLayer(previewPoly); } catch {} previewPoly = null; }
+        if (drawCoords.length >= 3) {
+            previewPoly = L.polygon(drawCoords, {
+                color, weight: 2.5, dashArray: '6,4',
+                fillColor: color, fillOpacity: 0.18, interactive: false
+            }).addTo(map);
+        }
+    }
+
+    function onMouseMove(e) {
+        if (rubberbandLyr) { try { map.removeLayer(rubberbandLyr); } catch {} rubberbandLyr = null; }
+        if (drawCoords.length > 0) {
+            const last = drawCoords[drawCoords.length - 1];
+            rubberbandLyr = L.polyline([last, [e.latlng.lat, e.latlng.lng]], {
+                color, weight: 1.5, dashArray: '4,4', opacity: 0.7, interactive: false
+            }).addTo(map);
+        }
+    }
+
+    let _lastClickTime = 0;
+    function onClick(e) {
+        const now = Date.now();
+        if (now - _lastClickTime < 350) return;
+        _lastClickTime = now;
+        const ll = e.latlng;
+        drawCoords.push([ll.lat, ll.lng]);
+        const vm = L.circleMarker([ll.lat, ll.lng], {
+            radius: 5, color: '#fff', fillColor: color, fillOpacity: 1,
+            weight: 2, interactive: false
+        }).addTo(map);
+        vertexMarkers.push(vm);
+        updatePreviewPoly();
+    }
+
+    function onDblClick(e) {
+        L.DomEvent.stop(e);
+        // The second click of a dblclick fires as a click first — remove that extra point
+        if (drawCoords.length > 0) {
+            drawCoords.pop();
+            const lastVm = vertexMarkers.pop();
+            if (lastVm) try { map.removeLayer(lastVm); } catch {}
+        }
+        if (drawCoords.length < 3) {
+            showToast('Need at least 3 points — keep clicking', 'warn');
+            return;
+        }
+        commitDraw();
+    }
+
+    function onKeyDown(e) {
+        if (e.key === 'Escape') { cancelDraw(); }
+        else if (e.key === 'Enter' && drawCoords.length >= 3) { commitDraw(); }
+    }
+
+    function commitDraw() {
+        cleanup();
+        house.coords          = drawCoords.slice();
+        house.boundary_edited = 1;
+        house.dirty           = true;
+        map._redraw();
+        allMaps.forEach(om => { if (om !== map && om._houseRef === house) om._sync(); });
+        updateLabelCoords(house);
+        updatePolygonArea(house);
+        updateDirtyUI(house);
+        // Switch to Points mode so the researcher can fine-tune vertices immediately
+        setEditTool(houseId, 'point');
+        showToast('Boundary drawn ✓ — switching to Edit Points for fine-tuning', 'success');
+        // Auto-save to DB — coords + boundary_edited flag + recomputed area
+        if (dbOnline && house.dbId) saveToDb(houseId);
+    }
+
+    function cancelDraw() {
+        cleanup();
+        setEditTool(houseId, 'point');
+        showToast('Boundary draw cancelled', 'info');
+    }
+
+    function cleanup() {
+        map.off('click',     onClick);
+        map.off('dblclick',  onDblClick);
+        map.off('mousemove', onMouseMove);
+        document.removeEventListener('keydown', onKeyDown);
+        vertexMarkers.forEach(vm => { try { map.removeLayer(vm); } catch {} });
+        vertexMarkers = [];
+        if (previewPoly)   { try { map.removeLayer(previewPoly);   } catch {} previewPoly   = null; }
+        if (rubberbandLyr) { try { map.removeLayer(rubberbandLyr); } catch {} rubberbandLyr = null; }
+        map.getContainer().style.cursor = '';
+        map._boundaryDrawCleanup = null;
+    }
+
+    map.on('click',     onClick);
+    map.on('dblclick',  onDblClick);
+    map.on('mousemove', onMouseMove);
+    document.addEventListener('keydown', onKeyDown);
+    map._boundaryDrawCleanup = cleanup;
+}
+
+function cleanupBoundaryDraw(map) {
+    if (map._boundaryDrawCleanup) { map._boundaryDrawCleanup(); map._boundaryDrawCleanup = null; }
+}
+
 // ── Clear mask ────────────────────────────────────
 function clearMask(houseId) {
     const house   = boundaries.find(h => h.id === houseId);
@@ -1998,6 +2125,7 @@ function renderGalleryBatch(startIdx, batchSize) {
                         <div class="tool-row">
                             <button class="brush-btn tool-btn active" id="tool-point-${house.id}" onclick="setEditTool(${house.id},'point')">◈ Points</button>
                             <button class="brush-btn tool-btn" id="tool-brush-${house.id}" onclick="setEditTool(${house.id},'brush')">⊕ Brush</button>
+                            <button class="brush-btn bnd-tool-draw" id="tool-draw-${house.id}" onclick="setEditTool(${house.id},'draw')">✏ Draw</button>
                         </div>
                         <div class="tool-row" id="brush-controls-${house.id}" style="display:none">
                             <button class="brush-btn brush-btn-add active" id="brush-add-${house.id}" onclick="setBrushMode(${house.id},'add')">✚</button>
@@ -2068,6 +2196,17 @@ function toggleEdit(houseId) {
     const editMap=allMaps.find(m=>m._houseRef===house&&m._isEditSource);
     if(!editMap) return;
     const on=!editMap._editMode;
+    // Boundary edit and mask edit are mutually exclusive
+    if (on && editMap._maskEditMode) {
+        editMap._maskEditMode = false;
+        cleanupMaskDraw(editMap);
+        cleanupMaskHandles(editMap);
+        const maskBtn     = document.getElementById(`maskeditbtn-${houseId}`);
+        const maskToolbar = document.getElementById(`mask-hint-${houseId}`);
+        if (maskBtn)    { maskBtn.textContent = '⬟ Mask'; maskBtn.classList.remove('active'); }
+        if (maskToolbar) maskToolbar.style.display = 'none';
+        if (house.mask_dirty && dbOnline && house.dbId) saveMaskToDb(houseId);
+    }
     setEditMode(editMap,on);
     const btn=document.getElementById(`editbtn-${houseId}`);
     const hint=document.getElementById(`hint-${houseId}`);
