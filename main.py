@@ -21,6 +21,13 @@ from pydantic import BaseModel
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DB_PATH    = Path("satview.db")
+
+# In-memory dedupe session metadata (resets on server restart, which is fine since
+# dedupe sessions require re-upload after restart anyway)
+_dedupe_meta: dict = {
+    'filename': 'deduplicated',   # original uploaded filename stem
+    'columns':  [],               # original CSV column order, preserved for export
+}
 STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
 
@@ -140,6 +147,8 @@ def init_db():
             'sam_mask_wkt_original':'TEXT',
             'boundary_edited':'INTEGER',
             'mask_edited':'INTEGER',
+            # All original CSV columns not in our schema (preserves client data for round-trip export)
+            'extra_columns_json':'TEXT',
         }
         for col, typ in col_types.items():
             if col not in cols:
@@ -231,17 +240,23 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
 class HouseIn(BaseModel):
-    label:  Optional[str] = None
-    coords: list[list[float]]   # [[lat,lon], ...] — any number of points
+    label:              Optional[str]  = None
+    coords:             list[list[float]]
+    extra_columns_json: Optional[str]  = None   # JSON-encoded original client columns
 
 class HouseUpdate(BaseModel):
-    label:  Optional[str]               = None
-    coords: Optional[list[list[float]]] = None
+    label:              Optional[str]               = None
+    coords:             Optional[list[list[float]]] = None
+    extra_columns_json: Optional[str]               = None
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def row_to_dict(r) -> dict:
     d = dict(r)
     d['coords'] = json.loads(d.get('coords_json') or '[]')
+    try:
+        d['extra_columns'] = json.loads(d.get('extra_columns_json') or '{}')
+    except (json.JSONDecodeError, TypeError):
+        d['extra_columns'] = {}
     for f in EXTRA_FIELDS:
         d.setdefault(f, None)
     return d
@@ -316,8 +331,8 @@ def create_house(body: HouseIn):
     label = body.label or f"House {datetime.now().strftime('%Y%m%d-%H%M%S')}"
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO houses (label, coords_json) VALUES (?, ?)",
-            (label, json.dumps(body.coords))
+            "INSERT INTO houses (label, coords_json, extra_columns_json) VALUES (?, ?, ?)",
+            (label, json.dumps(body.coords), body.extra_columns_json or '{}')
         )
         house_id = cur.lastrowid
     return {"id": house_id, "label": label, "message": "House saved."}
@@ -334,6 +349,8 @@ def update_house(house_id: int, body: HouseUpdate):
         if body.coords is not None:
             updates["coords_json"] = json.dumps(body.coords)
             updates["boundary_edited"] = 1
+        if body.extra_columns_json is not None:
+            updates["extra_columns_json"] = body.extra_columns_json
         set_clause = ", ".join(f"{k}=?" for k in updates)
         conn.execute(f"UPDATE houses SET {set_clause} WHERE id=?",
                      (*updates.values(), house_id))
@@ -492,7 +509,11 @@ def _parse_csv_rows(content: str):
                 'constructed_2024':  _safe_constructed(row_dict.get('constructed_2024')),
                 'constructed_2025':  _safe_constructed(row_dict.get('constructed_2025')),
             }
-            new_rows.append({"row_index": i, "label": label, "coords": coords, **extra})
+            new_rows.append({
+                "row_index": i, "label": label, "coords": coords,
+                "extra_columns_json": json.dumps(dict(row_dict)),
+                **extra,
+            })
     else:
         # Old format: plain WKT rows or lat/lon rows
         lines = [l.strip() for l in content.strip().splitlines()
@@ -563,13 +584,15 @@ def _insert_house(label: str, coords: list, extra: dict = None) -> int:
     # polygon_wkt_original / sam_mask_wkt_original are set ONCE at insert time
     # and must never be overwritten — they preserve the as-imported state for research.
     cols = (
-        ['label', 'coords_json', 'polygon_wkt_original', 'sam_mask_wkt_original']
+        ['label', 'coords_json', 'polygon_wkt_original', 'sam_mask_wkt_original',
+         'extra_columns_json']
         + EXTRA_FIELDS
     )
     vals = (
         [label, json.dumps(coords),
          coords_to_wkt(coords),
-         extra.get('sam_mask_wkt') or '']
+         extra.get('sam_mask_wkt') or '',
+         extra.get('extra_columns_json') or '{}']
         + [extra.get(f) for f in EXTRA_FIELDS]
     )
     col_str      = ', '.join(cols)
@@ -586,6 +609,9 @@ def _update_house_from_csv(db_id: int, csv_row: dict):
     # they are write-once at INSERT and must never be overwritten.
     set_parts = ["label=?", "coords_json=?", "boundary_edited=1", "updated_at=datetime('now')"]
     vals = [label, json.dumps(coords)]
+    if csv_row.get('extra_columns_json'):
+        set_parts.append("extra_columns_json=?")
+        vals.append(csv_row['extra_columns_json'])
     for f in EXTRA_FIELDS:
         if f in csv_row:
             set_parts.append(f"{f}=?")
@@ -634,6 +660,59 @@ def clear_database():
     print(f"✓ Cleared {count} records from database")
     return {"deleted": count, "message": f"Database cleared — {count} records removed."}
 
+# SatView schema columns — always output from DB with current (edited) values.
+# Any original-CSV column with the same name (case-insensitive) is excluded from the
+# "client columns" prefix section to avoid duplication.
+_SATVIEW_SCHEMA_COLS_LOWER = {
+    'id', 'label', 'point_id', 'cluster_id', 'plot_index',
+    'polygon_wkt_original', 'polygon_wkt', 'boundary_edited',
+    'sam_area_m2', 'plot_area_m2',
+    'sam_mask_wkt_original', 'sam_mask_wkt', 'mask_edited',
+    'height_m_2023', 'height_class_2023', 'height_src_2023',
+    'height_m_2024', 'height_class_2024', 'height_src_2024',
+    'height_m_2025', 'height_class_2025', 'height_src_2025',
+    'constructed_2023', 'constructed_2024', 'constructed_2025',
+    'sam_status', 'sam_score', 'sam_iou', 'covered_pct',
+    'sam_bbox_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
+    'created_at', 'updated_at',
+    '_record_status', 'deleted_at', 'deleted_reason',
+    # Internal storage columns — never exported directly
+    'coords_json', 'extra_columns_json',
+}
+
+_SATVIEW_EXPORT_COLS = [
+    'id', 'label', 'point_id', 'cluster_id', 'plot_index',
+    'polygon_wkt_original', 'polygon_wkt', 'boundary_edited',
+    'sam_area_m2', 'plot_area_m2',
+    'sam_mask_wkt_original', 'sam_mask_wkt', 'mask_edited',
+    'height_m_2023', 'height_class_2023', 'height_src_2023',
+    'height_m_2024', 'height_class_2024', 'height_src_2024',
+    'height_m_2025', 'height_class_2025', 'height_src_2025',
+    'constructed_2023', 'constructed_2024', 'constructed_2025',
+    'sam_status', 'sam_score', 'sam_iou', 'covered_pct',
+    'sam_bbox_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
+    'created_at', 'updated_at',
+    '_record_status', 'deleted_at', 'deleted_reason',
+]
+
+
+def _collect_extra_col_order(rows_extra_json: list[str]) -> list[str]:
+    """Return ALL original client column names in first-seen order.
+    No exclusions — every column from the client's input file is preserved."""
+    seen = set()
+    order = []
+    for ecj in rows_extra_json:
+        try:
+            d = json.loads(ecj or '{}')
+        except (json.JSONDecodeError, TypeError):
+            continue
+        for k in d:
+            if k not in seen:
+                seen.add(k)
+                order.append(k)
+    return order
+
+
 # ── CSV Export ────────────────────────────────────────────────────────────────
 @app.get("/api/export/csv")
 def export_csv():
@@ -645,37 +724,21 @@ def export_csv():
             (SESSION_ID,)
         ).fetchall()
 
-    # Column order: identifiers → boundary → mask → height → status → SAM → audit → tracking
-    export_cols = [
-        # ── Identifiers ──────────────────────────────────────────
-        'id', 'label', 'point_id', 'cluster_id', 'plot_index',
-        # ── Boundary traceability ────────────────────────────────
-        'polygon_wkt_original',   # as-imported boundary (write-once, never edited)
-        'polygon_wkt',            # current boundary (may have been manually adjusted)
-        'boundary_edited',        # 1 = researcher moved boundary points
-        'sam_area_m2',            # area of the CURRENT boundary (m²)
-        'plot_area_m2',           # area of the ORIGINAL plot boundary from source (m²)
-        # ── Mask traceability ────────────────────────────────────
-        'sam_mask_wkt_original',  # as-imported SAM mask (write-once)
-        'sam_mask_wkt',           # current mask (may have been manually adjusted)
-        'mask_edited',            # 1 = researcher moved mask points
-        # ── Height (all years) ───────────────────────────────────
-        'height_m_2023', 'height_class_2023', 'height_src_2023',
-        'height_m_2024', 'height_class_2024', 'height_src_2024',
-        'height_m_2025', 'height_class_2025', 'height_src_2025',
-        # ── Construction status (researcher-annotated) ───────────
-        'constructed_2023', 'constructed_2024', 'constructed_2025',
-        # ── SAM pipeline metadata ────────────────────────────────
-        'sam_status', 'sam_score', 'sam_iou', 'covered_pct',
-        'sam_bbox_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
-        # ── Audit timestamps ─────────────────────────────────────
-        'created_at', 'updated_at',
-        # ── Deletion tracking (empty for active records) ─────────
-        '_record_status', 'deleted_at', 'deleted_reason',
-    ]
+    # Collect original client columns from all rows (active + deleted snapshots)
+    all_extra_jsons = [r['extra_columns_json'] or '{}' for r in active_rows]
+    for dr in deleted_rows:
+        try:
+            snap = json.loads(dr['snapshot_json'])
+            all_extra_jsons.append(snap.get('extra_columns_json') or '{}')
+        except Exception:
+            pass
+    client_cols = _collect_extra_col_order(all_extra_jsons)
 
-    output = io.StringIO()
-    writer = csv_module.writer(output, quoting=csv_module.QUOTE_MINIMAL)
+    # Final column order: [client original cols] + [SatView schema cols]
+    export_cols = client_cols + _SATVIEW_EXPORT_COLS
+
+    output  = io.StringIO()
+    writer  = csv_module.writer(output, quoting=csv_module.QUOTE_MINIMAL)
     writer.writerow(export_cols)
 
     db_cols: set = set(active_rows[0].keys()) if active_rows else set()
@@ -686,11 +749,18 @@ def export_csv():
         if not coords:
             continue
         current_wkt = coords_to_wkt(coords)
+        try:
+            orig_extra = json.loads(r['extra_columns_json'] or '{}')
+        except Exception:
+            orig_extra = {}
+
         row_data = []
         for col in export_cols:
-            if col == 'polygon_wkt':
+            if col in client_cols:
+                row_data.append(orig_extra.get(col, '') or '')
+            elif col == 'polygon_wkt':
                 row_data.append(current_wkt)
-            elif col in ('_record_status',):
+            elif col == '_record_status':
                 row_data.append('active')
             elif col in ('deleted_at', 'deleted_reason'):
                 row_data.append('')
@@ -709,10 +779,17 @@ def export_csv():
             continue
         coords = json.loads(snap.get('coords_json') or '[]')
         current_wkt = coords_to_wkt(coords) if coords else ''
-        snap_cols = set(snap.keys())
+        snap_cols   = set(snap.keys())
+        try:
+            orig_extra = json.loads(snap.get('extra_columns_json') or '{}')
+        except Exception:
+            orig_extra = {}
+
         row_data = []
         for col in export_cols:
-            if col == 'id':
+            if col in client_cols:
+                row_data.append(orig_extra.get(col, '') or '')
+            elif col == 'id':
                 row_data.append(snap.get('id', dr['original_id']))
             elif col == 'polygon_wkt':
                 row_data.append(current_wkt)
@@ -747,6 +824,7 @@ class BulkConfirmBody(BaseModel):
 
 @app.post("/api/dedupe/upload")
 async def dedupe_upload(file: UploadFile = File(...)):
+    global _dedupe_meta
     content = (await file.read()).decode("utf-8-sig")
     reader  = csv_module.DictReader(io.StringIO(content))
     all_rows = list(reader)
@@ -756,6 +834,13 @@ async def dedupe_upload(file: UploadFile = File(...)):
     missing = {'pin', '_match_rank', 'polygon_wkt'} - set(all_rows[0].keys())
     if missing:
         raise HTTPException(400, f"Missing required columns: {missing}")
+
+    # Store original column order and filename for round-trip export
+    orig_stem = Path(file.filename or 'deduplicated').stem
+    # Strip common result suffixes so name stays clean
+    orig_stem = re.sub(r'[_\-]?(results?|matched?|input)$', '', orig_stem, flags=re.IGNORECASE)
+    _dedupe_meta['filename'] = orig_stem or 'deduplicated'
+    _dedupe_meta['columns']  = list(reader.fieldnames or [])
 
     from collections import defaultdict
     by_pin: dict = defaultdict(list)
@@ -929,14 +1014,14 @@ def dedupe_export():
     if not sels:
         raise HTTPException(400, "No dedupe session loaded. Upload a CSV first.")
 
-    PIN_COLS = [
-        'pin', 'circle_name', 'locality_name', 'circle_arm', 'pool_type',
+    # Use the original column order captured at upload time (preserves ALL client columns).
+    # Fall back to a sensible default if meta was lost (e.g. server restart between upload & export).
+    orig_cols = _dedupe_meta.get('columns') or [
+        'uid', 'pin', 'circle_name', 'locality_name', 'circle_arm', 'pool_type',
         'in_tax_admin', 'tax_admin_arm', 'in_citizen_survey', 'survey_group',
         'organized_type', 'is_gated', 'is_planned', 'is_organized',
         'garv', 'total_property_tax', 'total_covered_area', 'total_land_area',
-        'latitude', 'longitude', '_match_type', '_distance_m', '_source_file',
-    ]
-    PLOT_COLS = [
+        'latitude', 'longitude', '_match_type', '_distance_m', '_match_rank', '_source_file',
         'point_id', 'plot_index', 'polygon_wkt', 'plot_area_m2',
         'sam_status', 'sam_score', 'sam_iou', 'sam_area_m2', 'covered_pct',
         'sam_bbox_wkt', 'sam_mask_wkt', 'sam_mask_path', 'sam_rotation_deg', 'sam_error',
@@ -944,12 +1029,13 @@ def dedupe_export():
         'height_m_2024', 'height_class_2024', 'height_src_2024',
         'height_m_2025', 'height_class_2025', 'height_src_2025',
     ]
+    # Append our dedupe-specific audit columns at the end
     META_COLS = ['_selected_rank', '_verified', '_dedupe_notes']
-    ALL_COLS  = PIN_COLS + PLOT_COLS + META_COLS
+    all_cols  = orig_cols + [c for c in META_COLS if c not in orig_cols]
 
     output = io.StringIO()
     writer = csv_module.writer(output, quoting=csv_module.QUOTE_MINIMAL)
-    writer.writerow(ALL_COLS)
+    writer.writerow(all_cols)
 
     with get_db() as conn:
         for sel in sels:
@@ -961,25 +1047,31 @@ def dedupe_export():
                 continue
             data = json.loads(cand['candidate_json'])
             row  = []
-            for col in ALL_COLS:
+            for col in all_cols:
                 if   col == '_selected_rank': row.append(sel['selected_rank'])
                 elif col == '_verified':      row.append(1 if sel['status'] == 'confirmed' else 0)
                 elif col == '_dedupe_notes':  row.append(sel['notes'] or '')
                 else:                         row.append(data.get(col, ''))
             writer.writerow(row)
 
+    # Build filename from original input file name
+    safe_stem  = re.sub(r'[^\w\-]', '_', _dedupe_meta.get('filename') or 'deduplicated')
+    out_name   = f"{safe_stem}_deduplicated.csv"
+
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=modeltown_deduplicated.csv"}
+        headers={"Content-Disposition": f"attachment; filename={out_name}"}
     )
 
 
 @app.delete("/api/dedupe/session")
 def dedupe_reset():
+    global _dedupe_meta
     with get_db() as conn:
         conn.execute("DELETE FROM dedupe_candidates")
         conn.execute("DELETE FROM dedupe_selections")
+    _dedupe_meta = {'filename': 'deduplicated', 'columns': []}
     return {"message": "Dedupe session cleared"}
 
 
